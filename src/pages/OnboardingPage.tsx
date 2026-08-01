@@ -164,15 +164,19 @@ export default function OnboardingPage() {
         });
         if (profError) throw profError;
 
-        await supabase.from("profiles").update({
-          bio,
-          city,
-          phone,
+        await supabase.from("profiles").update({ bio, city, phone }).eq("user_id", user.id);
+
+        await supabase.from("profiles_private").upsert({
+          user_id: user.id,
           iban: iban || null,
           bank_holder_name: bankHolder || null,
           document_urls: documentUrls,
-          verification_status: documents.length > 0 ? "submitted" : "pending",
-        } as any).eq("user_id", user.id);
+        }, { onConflict: "user_id" });
+
+        if (documents.length > 0) {
+          const { error: verifyError } = await supabase.rpc("submit_verification_request");
+          if (verifyError) console.error("Errore invio verifica:", verifyError);
+        }
       }
 
       if (userType === "business") {
@@ -200,15 +204,19 @@ export default function OnboardingPage() {
         });
         if (bizError) throw bizError;
 
-        await supabase.from("profiles").update({
-          bio,
-          city,
-          phone,
+        await supabase.from("profiles").update({ bio, city, phone }).eq("user_id", user.id);
+
+        await supabase.from("profiles_private").upsert({
+          user_id: user.id,
           iban: iban || null,
           bank_holder_name: bankHolder || null,
           document_urls: documentUrls,
-          verification_status: documents.length > 0 ? "submitted" : "pending",
-        } as any).eq("user_id", user.id);
+        }, { onConflict: "user_id" });
+
+        if (documents.length > 0) {
+          const { error: verifyError } = await supabase.rpc("submit_verification_request");
+          if (verifyError) console.error("Errore invio verifica:", verifyError);
+        }
       }
 
       await refreshProfile();
