@@ -18,9 +18,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response(null, { headers: corsHeaders });
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY)
-    return jsonResponse({ error: "LOVABLE_API_KEY not configured" }, 500);
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY)
+    return jsonResponse({ error: "GEMINI_API_KEY not configured" }, 500);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -136,17 +136,17 @@ serve(async (req) => {
 
       console.log("[AI-LOOK] Generating with prompt:", prompt.substring(0, 200));
 
-      // Call Lovable AI image editing
+      // Call Gemini directly (OpenAI-compatible endpoint) for image editing
       const aiResponse = await fetch(
-        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            Authorization: `Bearer ${GEMINI_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-3.1-flash-image-preview",
+            model: "gemini-3.1-flash-image-preview",
             messages: [
               {
                 role: "user",
@@ -241,15 +241,15 @@ serve(async (req) => {
       if (!imageUrl) throw new Error("Foto richiesta");
 
       const aiResponse = await fetch(
-        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            Authorization: `Bearer ${GEMINI_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "gemini-2.5-flash",
             messages: [
               {
                 role: "user",

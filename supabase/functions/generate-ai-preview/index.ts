@@ -12,9 +12,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
+    if (!GEMINI_API_KEY) {
       return new Response(JSON.stringify({ 
         error: "AI service temporarily unavailable",
         fallback: true,
@@ -73,21 +73,22 @@ serve(async (req) => {
 
     const aiPrompt = prompt || sectorPrompts[sector] || sectorPrompts.hair;
 
-    // Call Lovable AI for image generation
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Call Gemini directly (OpenAI-compatible endpoint) for image generation
+    const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
+        model: "gemini-3.1-flash-image-preview",
         messages: [
           {
             role: "user",
             content: `Generate a high-quality preview image: ${aiPrompt}. Make it photorealistic and professional.`,
           },
         ],
+        modalities: ["image", "text"],
       }),
     });
 
@@ -131,34 +132,31 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const generatedContent = aiData.choices?.[0]?.message?.content || "Preview generata con successo";
 
-    // Extract image URL if present in response
+    // Extract image URL if present in response (OpenAI-compatible shape:
+    // choices[].message.images[].image_url.url — NOT the native Gemini
+    // "parts"/"inline_data" shape, which this endpoint doesn't return).
     let generatedImageUrl = null;
-    // Check for inline_data images in the response
-    const parts = aiData.choices?.[0]?.message?.parts;
-    if (parts) {
-      for (const part of parts) {
-        if (part.inline_data?.mime_type?.startsWith("image/")) {
-          // Upload base64 image to storage
-          const base64Data = part.inline_data.data;
-          const mimeType = part.inline_data.mime_type;
-          const ext = mimeType.includes("png") ? "png" : "jpg";
-          const fileName = `preview-${session_id}.${ext}`;
-          
-          const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-          
-          await supabase.storage.from("look-photos").upload(
-            `previews/${fileName}`,
-            binaryData,
-            { contentType: mimeType, upsert: true }
-          );
+    const rawImageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (rawImageUrl) {
+      const base64Data = rawImageUrl.replace(/^data:image\/\w+;base64,/, "");
+      const mimeMatch = rawImageUrl.match(/^data:(image\/\w+);base64,/);
+      const mimeType = mimeMatch?.[1] || "image/png";
+      const ext = mimeType.includes("png") ? "png" : "jpg";
+      const fileName = `preview-${session_id}.${ext}`;
 
-          const { data: urlData } = supabase.storage
-            .from("look-photos")
-            .getPublicUrl(`previews/${fileName}`);
-          
-          generatedImageUrl = urlData.publicUrl;
-        }
-      }
+      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+      await supabase.storage.from("look-photos").upload(
+        `previews/${fileName}`,
+        binaryData,
+        { contentType: mimeType, upsert: true }
+      );
+
+      const { data: urlData } = supabase.storage
+        .from("look-photos")
+        .getPublicUrl(`previews/${fileName}`);
+
+      generatedImageUrl = urlData.publicUrl;
     }
 
     // Update session as completed
