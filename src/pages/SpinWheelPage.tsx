@@ -44,7 +44,7 @@ type ViewState = "wheel" | "shop" | "missions" | "leaderboard";
 
 export default function SpinWheelPage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinResult, setSpinResult] = useState<typeof spinPrizes[0] | null>(null);
   const [rotation, setRotation] = useState(0);
@@ -123,7 +123,15 @@ export default function SpinWheelPage() {
           prize_value: prize.value, prize_description: prize.label,
         });
         if (prize.type === 'QR_COIN') {
-          await supabase.from('profiles').update({ qr_coins: qrCoins + prize.value }).eq('user_id', user.id);
+          const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+            body: { kind: "spin_win", amount: prize.value },
+          });
+          if (error || data?.error) {
+            console.error('Spin credit failed:', error || data?.error);
+            toast.error("Errore nell'accredito della vincita, contatta il supporto");
+          } else {
+            refreshProfile();
+          }
         }
       } catch (error) { console.error('Error:', error); }
 
@@ -144,7 +152,14 @@ export default function SpinWheelPage() {
   const buySpins = async (pkg: typeof spinPackages[0]) => {
     if (!user) { navigate("/auth"); return; }
     if (qrCoins < pkg.price) { toast.error("QRCoin insufficienti"); return; }
-    await supabase.from('profiles').update({ qr_coins: qrCoins - pkg.price }).eq('user_id', user.id);
+    const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+      body: { kind: "spend", amount: pkg.price, reason: "buy_spins" },
+    });
+    if (error || data?.error) {
+      toast.error(data?.error || "Acquisto fallito, riprova");
+      return;
+    }
+    refreshProfile();
     setSpinsRemaining(prev => prev + pkg.spins);
     setShowBuyModal(false);
     toast.success(`🎡 +${pkg.spins} giri acquistati!`);

@@ -84,7 +84,7 @@ const rarityLabel: Record<string, string> = {
 
 export default function MissionsPage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<"daily" | "weekly" | "badges">("daily");
   const [dailyMissions, setDailyMissions] = useState(defaultDailyMissions);
   const [weeklyMissions, setWeeklyMissions] = useState(defaultWeeklyMissions);
@@ -123,15 +123,22 @@ export default function MissionsPage() {
     }
   };
 
-  const claimReward = (missionId: string, reward: number, type: "daily" | "weekly") => {
+  const claimReward = async (missionId: string, reward: number, type: "daily" | "weekly") => {
+    if (!user) { toast.error("Devi effettuare l'accesso"); return; }
+
+    const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+      body: { kind: "mission_claim", missionId },
+    });
+
+    if (error || data?.error) {
+      toast.error(data?.error || "Riscatto fallito, riprova");
+      return;
+    }
+
     const setter = type === "daily" ? setDailyMissions : setWeeklyMissions;
     setter(prev => prev.map(m => m.id === missionId ? { ...m, claimed: true } : m));
     toast.success(`+${reward} QRCoins guadagnati!`);
-
-    if (user) {
-      const currentCoins = profile?.qr_coins || 0;
-      supabase.from("profiles").update({ qr_coins: currentCoins + reward }).eq("user_id", user.id);
-    }
+    refreshProfile();
   };
 
   const completedDaily = dailyMissions.filter(m => m.completed).length;

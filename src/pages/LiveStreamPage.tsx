@@ -70,7 +70,7 @@ const CATEGORIES = [
 export default function LiveStreamPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [streams, setStreams] = useState<LiveStream[]>([]);
   const [filteredStreams, setFilteredStreams] = useState<LiveStream[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -266,8 +266,16 @@ export default function LiveStreamPage() {
     const qrCoins = profile?.qr_coins || 0;
     if (qrCoins < selectedTip) { toast.error("QR Coins insufficienti"); navigate("/qr-coins"); return; }
     try {
-      await supabase.from('stream_tips').insert({ stream_id: selectedStream.id, user_id: user.id, amount: selectedTip });
-      await supabase.from('profiles').update({ qr_coins: qrCoins - selectedTip }).eq('user_id', user.id);
+      const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+        body: {
+          kind: "spend",
+          amount: selectedTip,
+          reason: "live_tip",
+          sideEffect: { table: "stream_tips", row: { stream_id: selectedStream.id, amount: selectedTip } },
+        },
+      });
+      if (error || data?.error) throw new Error(data?.error || "Errore nell'invio del regalo");
+      refreshProfile();
       setChatMessages(prev => [...prev, {
         id: Date.now().toString(), user: profile?.display_name || 'You',
         message: `Ha inviato ${selectedTip} QRCoins! 🎉`, type: 'tip', amount: selectedTip
