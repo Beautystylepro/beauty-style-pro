@@ -56,6 +56,7 @@ export default function CheckoutPage() {
             refId,
             refType: type,
             successUrl,
+            paymentMethod: selected,
             cancelUrl: `${window.location.origin}/checkout?amount=${amount}&desc=${encodeURIComponent(description)}&type=${type}&ref=${refId}`,
           },
         });
@@ -74,75 +75,21 @@ export default function CheckoutPage() {
           setProcessing(false);
           return;
         }
-        await supabase.from("profiles").update({ qr_coins: balance - amount }).eq("user_id", user.id);
-      }
-
-      // Record purchase if product type
-      if (type === "product" && refId) {
-        await supabase.from("product_purchases").insert({
-          buyer_id: user.id,
-          product_id: refId,
-          unit_price: amount,
-          total_price: amount,
-          payment_method: selected,
+        const affiliateCode = new URLSearchParams(window.location.search).get("aff");
+        const { data, error } = await supabase.functions.invoke("wallet-payment", {
+          body: { amount, description, type, refId, affiliateCode },
         });
+        if (error || data?.error) {
+          toast.error(data?.error || "Pagamento fallito, riprova");
+          setProcessing(false);
+          return;
+        }
+        toast.success("Pagamento completato!");
+        navigate(type === "booking" ? "/my-bookings" : "/wallet");
+        return;
       }
-
-      // Create receipt
-      await supabase.from("receipts").insert({
-        user_id: user.id,
-        receipt_type: type,
-        service_name: description,
-        amount,
-        payment_method: selected,
-        status: "paid",
-      });
-
-      // Track platform commission (15% - V7 Enterprise SaaS policy)
-      const COMMISSION_RATE = 15;
-      const commissionAmount = amount * (COMMISSION_RATE / 100);
-      if (refId) {
-        // Get seller id from product or booking
-        let sellerId = null;
-        if (type === "product") {
-          const { data: prod } = await supabase.from("products").select("seller_id").eq("id", refId).maybeSingle();
-          sellerId = prod?.seller_id;
-        }
-        if (sellerId) {
-          await supabase.from("platform_commissions").insert({
-            seller_id: sellerId,
-            buyer_id: user.id,
-            order_amount: amount,
-            commission_rate: COMMISSION_RATE,
-            commission_amount: commissionAmount,
-            commission_type: type === "product" ? "product" : "service",
-          });
-        }
-
-        // Check for affiliate referral
-        const refCode = new URLSearchParams(window.location.search).get("aff");
-        if (refCode && sellerId) {
-          const { data: aff } = await supabase.from("affiliates").select("*").eq("affiliate_code", refCode).maybeSingle();
-          if (aff) {
-            const affCommission = amount * (aff.commission_rate / 100);
-            await supabase.from("affiliate_sales").insert({
-              affiliate_id: aff.id,
-              buyer_id: user.id,
-              order_amount: amount,
-              commission_amount: affCommission,
-              product_id: type === "product" ? refId : null,
-            });
-            await supabase.from("affiliates").update({
-              total_earnings: Number(aff.total_earnings) + affCommission,
-              total_sales: (aff.total_sales || 0) + 1,
-            }).eq("id", aff.id);
-          }
-        }
-      }
-
-      toast.success("Pagamento completato!");
-      navigate(`/wallet`);
     } catch (e) {
+      console.error("Checkout error:", e);
       toast.error("Errore nel pagamento");
     }
     setProcessing(false);

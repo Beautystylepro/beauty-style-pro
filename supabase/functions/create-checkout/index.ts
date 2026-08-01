@@ -44,9 +44,21 @@ serve(async (req) => {
       currency = "eur",
       refId,
       refType,
+      paymentMethod,
     } = await req.json();
     if (!priceId && !amount) throw new Error("priceId or amount is required");
-    logStep("Request parsed", { priceId, mode, amount, refType, refId });
+    logStep("Request parsed", { priceId, mode, amount, refType, refId, paymentMethod });
+
+    // Map the app's payment method selection to Stripe's payment_method_types.
+    // Previously this was never set, so choosing "PayPal" or "Klarna" in the
+    // UI silently showed the same generic (card-only) Stripe page regardless
+    // — the selection had zero effect. Klarna also requires currency=eur.
+    const methodMap: Record<string, string[]> = {
+      card: ["card"],
+      paypal: ["paypal"],
+      klarna: ["klarna"],
+    };
+    const paymentMethodTypes = methodMap[paymentMethod] || ["card"];
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
@@ -76,6 +88,7 @@ serve(async (req) => {
       customer_email: customerId ? undefined : user.email,
       line_items: lineItems,
       mode: mode as "subscription" | "payment",
+      payment_method_types: mode === "subscription" ? ["card"] : paymentMethodTypes as Stripe.Checkout.SessionCreateParams.PaymentMethodType[],
       success_url: successUrl || `${origin}/subscriptions?success=true`,
       cancel_url: cancelUrl || `${origin}/subscriptions?cancelled=true`,
       metadata: {
