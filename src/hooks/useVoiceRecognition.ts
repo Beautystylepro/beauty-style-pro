@@ -97,10 +97,10 @@ export const useVoiceRecognition = (
 
     await Promise.all(listeners.map(async (listener) => {
       if (!listener) return;
-      try { await listener.remove(); } catch {}
+      try { await listener.remove(); } catch { /* best-effort, ignore */ }
     }));
 
-    try { await SpeechRecognition.removeAllListeners(); } catch {}
+    try { await SpeechRecognition.removeAllListeners(); } catch { /* best-effort, ignore */ }
   }, []);
 
   const stopNativeRecognition = useCallback(async () => {
@@ -110,7 +110,7 @@ export const useVoiceRecognition = (
 
     await removeNativeListeners();
 
-    try { await SpeechRecognition.stop(); } catch {}
+    try { await SpeechRecognition.stop(); } catch { /* best-effort, ignore */ }
 
     setIsWakeWordListening(false);
     setIsListening(false);
@@ -191,7 +191,7 @@ export const useVoiceRecognition = (
     const ref = wakeWordRecognitionRef.current;
     wakeWordRecognitionRef.current = null;
     if (ref) {
-      try { ref.stop(); } catch {}
+      try { ref.stop(); } catch { /* best-effort, ignore */ }
     }
     setIsWakeWordListening(false);
   }, []);
@@ -205,7 +205,7 @@ export const useVoiceRecognition = (
     }
 
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { /* best-effort, ignore */ }
       recognitionRef.current = null;
       setIsListening(false);
       isListeningRef.current = false;
@@ -282,12 +282,12 @@ export const useVoiceRecognition = (
     if (wakeWordRecognitionRef.current) {
       const wakeRef = wakeWordRecognitionRef.current;
       wakeWordRecognitionRef.current = null;
-      try { wakeRef.stop(); } catch {}
+      try { wakeRef.stop(); } catch { /* best-effort, ignore */ }
       setIsWakeWordListening(false);
     }
 
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try { recognitionRef.current.stop(); } catch { /* best-effort, ignore */ }
       recognitionRef.current = null;
     }
 
@@ -495,7 +495,7 @@ export const useVoiceRecognition = (
       wakeWordActiveRef.current = true;
 
       if (wakeWordRecognitionRef.current) {
-        try { wakeWordRecognitionRef.current.stop(); } catch {}
+        try { wakeWordRecognitionRef.current.stop(); } catch { /* best-effort, ignore */ }
         wakeWordRecognitionRef.current = null;
       }
 
@@ -657,10 +657,10 @@ export const useVoiceRecognition = (
       }
 
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch {}
+        try { recognitionRef.current.stop(); } catch { /* best-effort, ignore */ }
       }
       if (wakeWordRecognitionRef.current) {
-        try { wakeWordRecognitionRef.current.stop(); } catch {}
+        try { wakeWordRecognitionRef.current.stop(); } catch { /* best-effort, ignore */ }
       }
     };
   }, [clearWakeWordCommandTimeout, isNativeSpeechSupported, stopNativeRecognition]);

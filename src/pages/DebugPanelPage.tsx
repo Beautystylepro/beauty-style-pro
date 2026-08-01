@@ -42,26 +42,13 @@ export default function DebugPanelPage() {
   const [tab, setTab] = useState("tests");
   const isProduction = import.meta.env.PROD;
 
-  // Block debug panel in production
-  if (isProduction) {
-    return (
-      <MobileLayout>
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
-          <ShieldCheck className="w-16 h-16 text-muted-foreground" />
-          <h1 className="text-xl font-bold">Non disponibile</h1>
-          <p className="text-sm text-muted-foreground">Il Debug Panel non è disponibile in produzione.</p>
-        </div>
-      </MobileLayout>
-    );
-  }
-
-  // Check admin role
   useEffect(() => {
+    if (isProduction) return;
     if (!user) return;
     supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").then(({ data }) => {
       setIsAdmin(data && data.length > 0);
     });
-  }, [user]);
+  }, [user, isProduction]);
 
   const fetchErrors = async () => {
     const { data } = await (supabase as any)
@@ -82,11 +69,24 @@ export default function DebugPanelPage() {
   };
 
   useEffect(() => {
+    if (isProduction) return;
     if (isAdmin) {
       fetchErrors();
       fetchPastResults();
     }
-  }, [isAdmin]);
+  }, [isAdmin, isProduction]);
+
+  if (isProduction) {
+    return (
+      <MobileLayout>
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+          <ShieldCheck className="w-16 h-16 text-muted-foreground" />
+          <h1 className="text-xl font-bold">Non disponibile</h1>
+          <p className="text-sm text-muted-foreground">Il Debug Panel non è disponibile in produzione.</p>
+        </div>
+      </MobileLayout>
+    );
+  }
 
   if (isAdmin === null) {
     return (

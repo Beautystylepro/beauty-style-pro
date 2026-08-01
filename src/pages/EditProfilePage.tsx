@@ -1,7 +1,7 @@
 import MobileLayout from "@/components/layout/MobileLayout";
 import { ArrowLeft, Camera, MapPin, Navigation, User, Scissors, Building2, Lock, ChevronDown, Eye, EyeOff, Bell } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useState, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -16,6 +16,19 @@ export default function EditProfilePage() {
   const navigate = useNavigate();
   const { user, profile, refreshProfile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("focus") === "avatar") {
+      const t = setTimeout(() => fileInputRef.current?.click(), 300);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("focus");
+        return next;
+      }, { replace: true });
+      return () => clearTimeout(t);
+    }
+  }, [searchParams, setSearchParams]);
 
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [bio, setBio] = useState(profile?.bio || "");

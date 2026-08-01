@@ -1,8 +1,8 @@
 import MobileLayout from "@/components/layout/MobileLayout";
-import { ArrowLeft, Bell, Sparkles, Plus, Calendar, Clock } from "lucide-react";
+import { ArrowLeft, Bell, Sparkles, Plus, Calendar, Clock, Truck, Tag, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { useSmartReminders, useActiveReminders, useCreateManualReminder } from "@/hooks/useSmartReminders";
+import { useSmartReminders, useActiveReminders, useCreateManualReminder, useApplyShippingPromo } from "@/hooks/useSmartReminders";
 import SmartReminderCard from "@/components/reminders/SmartReminderCard";
 import { toast } from "sonner";
 
@@ -23,10 +23,48 @@ export default function RemindersPage() {
   const [selectedService, setSelectedService] = useState('');
   const [lastServiceDate, setLastServiceDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [shippingEnabled, setShippingEnabled] = useState(false);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [shippingNotes, setShippingNotes] = useState('');
+  const [promoCodeInput, setPromoCodeInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountType: string | null; discountValue: number | null; freeShipping: boolean } | null>(null);
 
   const { data: allReminders, isLoading } = useSmartReminders();
   const { data: activeReminders } = useActiveReminders();
   const createReminder = useCreateManualReminder();
+  const applyShippingPromo = useApplyShippingPromo();
+
+  const resetShippingState = () => {
+    setShippingEnabled(false);
+    setShippingAddress('');
+    setShippingNotes('');
+    setPromoCodeInput('');
+    setAppliedPromo(null);
+  };
+
+  const handleApplyPromo = async () => {
+    if (!promoCodeInput.trim()) return;
+    if (!selectedService) {
+      toast.error("Seleziona prima il tipo di servizio");
+      return;
+    }
+    try {
+      const result = await applyShippingPromo.mutateAsync({
+        code: promoCodeInput.trim(),
+        serviceType: selectedService,
+      });
+      setAppliedPromo({
+        code: promoCodeInput.trim(),
+        discountType: result.discount_type,
+        discountValue: result.discount_value,
+        freeShipping: !!result.free_shipping,
+      });
+      toast.success(result.message || "Codice promo applicato!");
+    } catch (error) {
+      setAppliedPromo(null);
+      toast.error(error instanceof Error ? error.message : "Codice promo non valido");
+    }
+  };
 
   const handleCreateReminder = async () => {
     if (!selectedService || !lastServiceDate) {
@@ -37,6 +75,11 @@ export default function RemindersPage() {
     const service = serviceTypes.find(s => s.id === selectedService);
     if (!service) return;
 
+    if (shippingEnabled && !shippingAddress.trim()) {
+      toast.error("Inserisci un indirizzo di spedizione");
+      return;
+    }
+
     try {
       await createReminder.mutateAsync({
         serviceType: service.id,
@@ -44,7 +87,13 @@ export default function RemindersPage() {
         lastServiceDate,
         frequencyDays: service.frequency,
         priority: service.frequency <= 14 ? 'high' : service.frequency <= 30 ? 'medium' : 'low',
-        notes
+        notes,
+        shippingEnabled,
+        shippingAddress: shippingEnabled ? shippingAddress.trim() : undefined,
+        shippingNotes: shippingEnabled ? shippingNotes.trim() : undefined,
+        freeShipping: appliedPromo?.freeShipping ?? false,
+        promoCode: appliedPromo?.code,
+        promoDiscount: appliedPromo?.discountValue ?? undefined,
       });
       
       toast.success("Promemoria creato!");
@@ -52,6 +101,7 @@ export default function RemindersPage() {
       setSelectedService('');
       setLastServiceDate('');
       setNotes('');
+      resetShippingState();
     } catch (error) {
       toast.error("Errore nella creazione");
     }
@@ -152,6 +202,79 @@ export default function RemindersPage() {
               />
             </div>
 
+            {/* Shipping Section */}
+            <div className="pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setShippingEnabled(!shippingEnabled)}
+                className="w-full flex items-center justify-between"
+              >
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-primary" /> Richiedi spedizione prodotto
+                </span>
+                <span className={`w-9 h-5 rounded-full relative transition-colors ${shippingEnabled ? 'bg-primary' : 'bg-muted'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${shippingEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </span>
+              </button>
+
+              {shippingEnabled && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Indirizzo di spedizione</label>
+                    <input
+                      type="text"
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                      placeholder="Via, città, CAP..."
+                      className="w-full mt-1 h-10 rounded-xl bg-muted border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Note di consegna (opzionale)</label>
+                    <input
+                      type="text"
+                      value={shippingNotes}
+                      onChange={(e) => setShippingNotes(e.target.value)}
+                      placeholder="Es. citofono, orari..."
+                      className="w-full mt-1 h-10 rounded-xl bg-muted border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                      <Tag className="w-3 h-3" /> Codice promo spedizione
+                    </label>
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={promoCodeInput}
+                        onChange={(e) => { setPromoCodeInput(e.target.value.toUpperCase()); setAppliedPromo(null); }}
+                        placeholder="Es. FREESHIP10"
+                        className="flex-1 h-10 rounded-xl bg-muted border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyPromo}
+                        disabled={applyShippingPromo.isPending || !promoCodeInput.trim()}
+                        className="px-3 rounded-xl bg-secondary text-secondary-foreground text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {applyShippingPromo.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Applica"}
+                      </button>
+                    </div>
+                    {appliedPromo && (
+                      <p className="text-xs text-green-500 flex items-center gap-1 mt-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {appliedPromo.freeShipping
+                          ? "Spedizione gratuita applicata!"
+                          : `Sconto applicato: ${appliedPromo.discountValue}${appliedPromo.discountType === 'percent' ? '%' : '€'}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <button
                 onClick={handleCreateReminder}
@@ -161,7 +284,7 @@ export default function RemindersPage() {
                 {createReminder.isPending ? 'Creazione...' : 'Crea Promemoria'}
               </button>
               <button
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => { setShowCreateForm(false); resetShippingState(); }}
                 className="px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm"
               >
                 Annulla

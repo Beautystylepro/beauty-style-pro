@@ -122,7 +122,7 @@ const WelcomeGate = ({ children }: { children: React.ReactNode }) => {
     try {
       const done = localStorage.getItem("stayle_welcome_completed");
       if (!done) navigate("/welcome", { replace: true });
-    } catch {}
+    } catch { /* best-effort, ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
   return <>{children}</>;

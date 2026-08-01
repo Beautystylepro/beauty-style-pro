@@ -102,7 +102,7 @@ export function useWebRTCCall() {
       disconnectTimerRef.current = null;
     }
     if (pcRef.current) {
-      try { pcRef.current.close(); } catch {}
+      try { pcRef.current.close(); } catch { /* best-effort, ignore */ }
       pcRef.current = null;
     }
     if (localStream) {
@@ -127,7 +127,7 @@ export function useWebRTCCall() {
       if (notifyPeer && peerIdRef.current && callIdRef.current) {
         await sendSignal("hangup", peerIdRef.current, null, activeKind, callIdRef.current);
       }
-    } catch {}
+    } catch { /* best-effort, ignore */ }
     cleanupPeer();
     resetCallState();
   }, [activeKind, cleanupPeer, resetCallState, sendSignal]);
@@ -246,7 +246,7 @@ export function useWebRTCCall() {
       audio.volume = 0.4;
       ringtoneRef.current = audio;
       await audio.play().catch(() => {});
-    } catch {}
+    } catch { /* best-effort, ignore */ }
   }, []);
 
   const startCall = useCallback(async (toUser: string, kind: CallKind, peerDisplayName?: string) => {
@@ -313,7 +313,7 @@ export function useWebRTCCall() {
       }
 
       for (const candidate of pendingIceRef.current) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
       }
       pendingIceRef.current = [];
 
@@ -331,7 +331,7 @@ export function useWebRTCCall() {
     if (!incoming) return;
     try {
       await sendSignal("reject", incoming.fromUser, null, incoming.kind, incoming.callId);
-    } catch {}
+    } catch { /* best-effort, ignore */ }
     stopRingtone();
     cleanupPeer();
     resetCallState();
@@ -411,7 +411,7 @@ export function useWebRTCCall() {
           if (!pc || signal.call_id !== callIdRef.current) return;
           await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: signal.payload?.sdp }));
           for (const candidate of pendingIceRef.current) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
           }
           pendingIceRef.current = [];
           setStatus("connecting");
@@ -422,7 +422,7 @@ export function useWebRTCCall() {
           if (signal.call_id !== callIdRef.current) return;
           const candidate = signal.payload as RTCIceCandidateInit;
           if (pc && pc.remoteDescription) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
           } else {
             pendingIceRef.current.push(candidate);
           }

@@ -173,7 +173,7 @@ export default function CallManager() {
       const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
       translationAudioRef.current = audio;
       void audio.play().catch(() => {});
-    } catch {}
+    } catch { /* best-effort, ignore */ }
   };
 
   const startLiveTranslation = () => {

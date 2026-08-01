@@ -23,8 +23,8 @@ async function loadContext(admin: Any, targetUserId: string) {
       admin.from('profiles').select('display_name, user_type, city, bio').eq('user_id', targetUserId).maybeSingle(),
       admin.from('professionals').select('id, category, description, price_min, price_max, city, phone').eq('user_id', targetUserId).maybeSingle(),
       admin.from('businesses').select('id, business_name, business_type, city, phone, description').eq('user_id', targetUserId).maybeSingle(),
-      admin.from('services').select('name, description, price, duration_minutes').eq('professional_id',
-        (await admin.from('professionals').select('id').eq('user_id', targetUserId).maybeSingle()).data?.id || '00000000-0000-0000-0000-000000000000').limit(20),
+      admin.from('services').select('id, name, description, price, duration_minutes').eq('professional_id',
+        (await admin.from('professionals').select('id').eq('user_id', targetUserId).maybeSingle()).data?.id || '00000000-0000-0000-0000-000000000000').eq('active', true).limit(20),
       admin.from('call_auto_answer_settings').select('*').eq('user_id', targetUserId).maybeSingle(),
     ]);
   return { profile, pro, biz, services, settings };
@@ -136,17 +136,69 @@ Deno.serve(async (req) => {
     // Handle actions
     if (parsed.action === 'booking' && parsed.booking && settings.auto_book_enabled) {
       try {
-        const { data: booking } = await admin.from('bookings').insert({
-          client_id: user.id,
-          professional_id: ctx.pro?.id || null,
-          booking_date: parsed.booking.date || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-          booking_time: parsed.booking.time || '10:00',
-          service_name: parsed.booking.service || 'Servizio',
-          status: 'pending',
-          notes: `Prenotato via Stella AI durante chiamata`,
-        }).select('id').single();
-        updates.booking_id = booking?.id;
-        updates.outcome = 'booking';
+        const professionalId = ctx.pro?.id;
+        if (!professionalId) throw new Error('no professional_id on context, cannot book');
+
+        // Resolve the spoken service name to a real service row (fuzzy match, fallback to cheapest active service).
+        const spokenService = (parsed.booking.service || '').toLowerCase().trim();
+        const services = (ctx.services || []) as Array<{ id: string; name: string; duration_minutes: number | null }>;
+        const matchedService =
+          services.find(s => s.name?.toLowerCase() === spokenService) ||
+          services.find(s => spokenService && s.name?.toLowerCase().includes(spokenService)) ||
+          services[0];
+        const durationMinutes = matchedService?.duration_minutes || 30;
+
+        const requestedDate = parsed.booking.date || new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const requestedTime = (parsed.booking.time || '10:00').slice(0, 5);
+
+        // Real availability check: don't blindly trust the requested slot,
+        // scan for existing bookings that day and pick the first free slot
+        // at/after the requested time (same source-of-truth logic as the
+        // web booking flow — see src/lib/availability.ts).
+        const GRID = ['09:00','09:30','10:00','10:30','11:00','11:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'];
+        const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const { data: existing } = await admin
+          .from('bookings')
+          .select('start_time, end_time')
+          .eq('professional_id', professionalId)
+          .eq('booking_date', requestedDate)
+          .neq('status', 'cancelled');
+        const occupied = (existing || []).map(b => ({
+          start: toMin(String(b.start_time).slice(0, 5)),
+          end: b.end_time ? toMin(String(b.end_time).slice(0, 5)) : toMin(String(b.start_time).slice(0, 5)) + durationMinutes,
+        }));
+        const freeSlots = GRID.filter(t => {
+          const s = toMin(t), e = s + durationMinutes;
+          return !occupied.some(o => s < o.end && e > o.start);
+        });
+        const chosenTime = freeSlots.includes(requestedTime) ? requestedTime : freeSlots.find(t => toMin(t) >= toMin(requestedTime)) || freeSlots[0];
+
+        if (!chosenTime) {
+          updates.outcome = 'booking_full';
+          parsed.reply = `Mi dispiace, il ${requestedDate} è già tutto occupato. Vuoi provare un altro giorno?`;
+        } else {
+          const [sh, sm] = chosenTime.split(':').map(Number);
+          const endTotal = sh * 60 + sm + durationMinutes;
+          const endTime = `${String(Math.floor(endTotal / 60)).padStart(2, '0')}:${String(endTotal % 60).padStart(2, '0')}`;
+
+          const { data: booking, error: bookingError } = await admin.from('bookings').insert({
+            client_id: user.id,
+            professional_id: professionalId,
+            service_id: matchedService?.id,
+            booking_date: requestedDate,
+            start_time: chosenTime,
+            end_time: endTime,
+            status: 'pending',
+            notes: `Prenotato via Stella AI durante chiamata`,
+          }).select('id').single();
+
+          if (bookingError) throw bookingError;
+          updates.booking_id = booking?.id;
+          updates.outcome = 'booking';
+          if (chosenTime !== requestedTime) {
+            parsed.reply = `Le ${requestedTime} non erano libere, ho prenotato per le ${chosenTime} del ${requestedDate}. Va bene?`;
+          }
+        }
       } catch (e) { console.error('booking insert failed', e); }
     } else if (parsed.action === 'message' && parsed.message_text && settings.take_message_enabled) {
       try {

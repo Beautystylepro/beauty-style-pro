@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Globe, Languages, DollarSign, Shield, Map, Check, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Globe, Languages, DollarSign, Shield, Map, Check, ChevronRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+const SETTINGS_KEY = "global_config";
+
+interface GlobalConfig {
+  defaultLang: string;
+  defaultCurrency: string;
+  enabledLangs: string[];
+  enabledCurrencies: string[];
+  compliance: { id: string; enabled: boolean }[];
+  autoTranslate: boolean;
+  autoDetectLocation: boolean;
+}
 
 const LANGUAGES = [
   { code: "it", name: "Italiano", flag: "🇮🇹" },
@@ -53,6 +66,44 @@ export default function GlobalSettingsPage() {
   const [compliance, setCompliance] = useState(COMPLIANCE_REGIONS);
   const [autoTranslate, setAutoTranslate] = useState(true);
   const [autoDetectLocation, setAutoDetectLocation] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("platform_settings")
+        .select("value")
+        .eq("key", SETTINGS_KEY)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Errore nel caricamento delle impostazioni globali:", error);
+        toast.error("Impossibile caricare le impostazioni globali, uso i valori predefiniti");
+      } else if (data?.value) {
+        const cfg = data.value as unknown as GlobalConfig;
+        if (cfg.defaultLang) setDefaultLang(cfg.defaultLang);
+        if (cfg.defaultCurrency) setDefaultCurrency(cfg.defaultCurrency);
+        if (cfg.enabledLangs) setEnabledLangs(cfg.enabledLangs);
+        if (cfg.enabledCurrencies) setEnabledCurrencies(cfg.enabledCurrencies);
+        if (cfg.compliance) {
+          setCompliance(prev =>
+            prev.map(r => {
+              const saved = cfg.compliance.find(c => c.id === r.id);
+              return saved ? { ...r, enabled: saved.enabled } : r;
+            })
+          );
+        }
+        if (typeof cfg.autoTranslate === "boolean") setAutoTranslate(cfg.autoTranslate);
+        if (typeof cfg.autoDetectLocation === "boolean") setAutoDetectLocation(cfg.autoDetectLocation);
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const toggleLang = (code: string) => {
     setEnabledLangs(prev =>
@@ -72,7 +123,29 @@ export default function GlobalSettingsPage() {
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setSaving(true);
+    const config: GlobalConfig = {
+      defaultLang,
+      defaultCurrency,
+      enabledLangs,
+      enabledCurrencies,
+      compliance: compliance.map(({ id, enabled }) => ({ id, enabled })),
+      autoTranslate,
+      autoDetectLocation,
+    };
+
+    const { error } = await supabase
+      .from("platform_settings")
+      .upsert({ key: SETTINGS_KEY, value: config as any }, { onConflict: "key" });
+
+    setSaving(false);
+
+    if (error) {
+      console.error("Errore nel salvataggio delle impostazioni globali:", error);
+      toast.error("Salvataggio fallito, riprova");
+      return;
+    }
     toast.success("Impostazioni globali salvate!");
   };
 
@@ -87,6 +160,11 @@ export default function GlobalSettingsPage() {
       </div>
 
       <div className="p-4 space-y-4">
+        {loading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
         <Tabs defaultValue="languages">
           <TabsList className="grid grid-cols-3 w-full">
             <TabsTrigger value="languages" className="text-xs"><Languages className="w-3 h-3 mr-1" />Lingue</TabsTrigger>
@@ -250,9 +328,10 @@ export default function GlobalSettingsPage() {
             </Card>
           </TabsContent>
         </Tabs>
+        )}
 
-        <Button className="w-full" onClick={handleSave}>
-          <Check className="w-4 h-4 mr-2" />
+        <Button className="w-full" onClick={handleSave} disabled={saving || loading}>
+          {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
           Salva Impostazioni Globali
         </Button>
       </div>

@@ -6,6 +6,7 @@ import { useVoiceSynthesis } from '@/hooks/useVoiceSynthesis';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { haversineDistance } from '@/hooks/useGeolocation';
+import { findNextAvailableSlot } from '@/lib/availability';
 import { useStellaLearning } from '@/hooks/useStellaLearning';
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
@@ -252,10 +253,10 @@ export function useStellaAgent() {
           toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', {
             duration: 6000,
           });
-          try { window.localStorage.setItem(KEY, '1'); } catch {}
+          try { window.localStorage.setItem(KEY, '1'); } catch { /* best-effort, ignore */ }
         }, 1500);
       }
-    } catch {}
+    } catch { /* best-effort, ignore */ }
     return () => {
       window.clearTimeout(timer);
       wakeWordStartedRef.current = false;
@@ -522,6 +523,120 @@ export function useStellaAgent() {
       ? `Prenotazione del ${booking.booking_date} confermata! ✅`
       : `Prenotazione del ${booking.booking_date} cancellata! ❌`;
   }, [user]);
+
+  // ── Helper: parse a spoken relative date into an ISO date string ─────────
+  const parseSpokenDate = useCallback((textLower: string): string => {
+    const today = new Date();
+    const dayNamesIt: Record<string, number> = {
+      domenica: 0, lunedì: 1, lunedi: 1, martedì: 2, martedi: 2, mercoledì: 3, mercoledi: 3,
+      giovedì: 4, giovedi: 4, venerdì: 5, venerdi: 5, sabato: 6,
+    };
+    if (/\bdopodomani\b/.test(textLower)) {
+      today.setDate(today.getDate() + 2);
+      return today.toISOString().split('T')[0];
+    }
+    if (/\boggi\b/.test(textLower)) {
+      return today.toISOString().split('T')[0];
+    }
+    if (/\bdomani\b/.test(textLower)) {
+      today.setDate(today.getDate() + 1);
+      return today.toISOString().split('T')[0];
+    }
+    for (const [name, dow] of Object.entries(dayNamesIt)) {
+      if (textLower.includes(name)) {
+        const d = new Date();
+        const diff = (dow - d.getDay() + 7) % 7 || 7; // next occurrence, always in the future
+        d.setDate(d.getDate() + diff);
+        return d.toISOString().split('T')[0];
+      }
+    }
+    // Default: tomorrow (never book same-day without an explicit "oggi").
+    today.setDate(today.getDate() + 1);
+    return today.toISOString().split('T')[0];
+  }, []);
+
+  // ── Helper: autonomous end-to-end booking ─────────────────────────────────
+  // Finds the professional, checks their real calendar for the next free
+  // slot on (or after) the requested date, and creates the booking —
+  // exactly like a client would via BookingPage, but voice-driven.
+  const autoBookAppointment = useCallback(async (targetName: string, rawText: string) => {
+    if (!user) return { message: 'Devi effettuare il login per prenotare!', bookingId: null as string | null };
+
+    const { data: pros } = await supabase
+      .from('professionals')
+      .select('id, business_name, user_id')
+      .ilike('business_name', `%${targetName}%`)
+      .limit(1);
+
+    let professionalId = pros?.[0]?.id as string | undefined;
+    let businessName = pros?.[0]?.business_name as string | undefined;
+
+    if (!professionalId) {
+      const profiles = await findProfileByName(targetName);
+      if (profiles.length > 0) {
+        const { data: proByUser } = await supabase
+          .from('professionals')
+          .select('id, business_name')
+          .eq('user_id', profiles[0].user_id)
+          .maybeSingle();
+        professionalId = proByUser?.id;
+        businessName = proByUser?.business_name || profiles[0].display_name || targetName;
+      }
+    }
+
+    if (!professionalId) {
+      return { message: `Non ho trovato "${targetName}" tra i professionisti registrati.`, bookingId: null as string | null };
+    }
+
+    const { data: services } = await supabase
+      .from('services')
+      .select('id, name, price, duration_minutes')
+      .eq('professional_id', professionalId)
+      .eq('active', true)
+      .order('price', { ascending: true })
+      .limit(1);
+
+    const service = services?.[0];
+    const durationMinutes = service?.duration_minutes || 30;
+    const requestedDate = parseSpokenDate(rawText.toLowerCase());
+
+    const slot = await findNextAvailableSlot(professionalId, requestedDate, durationMinutes);
+    if (!slot) {
+      return { message: `${businessName || targetName} non ha orari liberi nei prossimi 14 giorni, prova a chiamare direttamente.`, bookingId: null as string | null };
+    }
+
+    const [startH, startM] = slot.time.split(':').map(Number);
+    const endTotal = startH * 60 + startM + durationMinutes;
+    const endTime = `${Math.floor(endTotal / 60).toString().padStart(2, '0')}:${(endTotal % 60).toString().padStart(2, '0')}`;
+
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .insert({
+        client_id: user.id,
+        professional_id: professionalId,
+        service_id: service?.id,
+        booking_date: slot.date,
+        start_time: slot.time,
+        end_time: endTime,
+        total_price: service?.price,
+      })
+      .select('id')
+      .single();
+
+    if (error || !booking) {
+      console.error('Stella auto-booking error:', error);
+      return { message: `Errore nella prenotazione con ${businessName || targetName}, riprova.`, bookingId: null as string | null };
+    }
+
+    const dateLabel = new Date(slot.date + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+    const sameAsRequested = slot.date === requestedDate;
+    const priceLabel = service?.price ? ` (€${service.price})` : '';
+    const message = sameAsRequested
+      ? `Prenotato con ${businessName || targetName} ${dateLabel} alle ${slot.time}${priceLabel}! ✅`
+      : `Il giorno richiesto era pieno, ho prenotato il primo slot libero: ${dateLabel} alle ${slot.time} con ${businessName || targetName}${priceLabel}! ✅`;
+
+    return { message, bookingId: booking.id as string, price: service?.price };
+  }, [user, findProfileByName, parseSpokenDate]);
 
   // ── Helper: find nearby professionals/salons by city or GPS ─────────────
   const findNearbyProfessionals = useCallback(async (city?: string, specialty?: string) => {
@@ -836,6 +951,7 @@ export function useStellaAgent() {
       { patterns: ['apri notifiche', 'le notifiche', 'dimmi le notifiche', 'vedi notifiche', 'mostra notifiche'], route: '/notifications', response: 'Ecco le tue notifiche!' },
       { patterns: ['apri profilo', 'vai al profilo', 'il mio profilo', 'profilo mio'], route: '/profile', response: 'Ecco il tuo profilo!' },
       { patterns: ['modifica profilo', 'edit profilo', 'cambia profilo', 'aggiorna profilo'], route: '/profile/edit', response: 'Apro la modifica del profilo!' },
+      { patterns: ['cambia foto profilo', 'cambia immagine profilo', 'nuova foto profilo', 'aggiorna foto profilo', 'cambia avatar'], route: '/profile/edit?focus=avatar', response: 'Apro la modifica profilo: tocca la tua foto per sceglierne una nuova dalla galleria!' },
       { patterns: ['apri wallet', 'vai al wallet', 'portafoglio', 'i miei soldi', 'saldo'], route: '/wallet', response: 'Apro il tuo wallet!' },
       { patterns: ['apri mappa', 'cerca sulla mappa', 'mappa', 'dove sono'], route: '/map-search', response: 'Apro la mappa!' },
       { patterns: ['vai allo shop', 'apri shop', 'negozio', 'prodotti', 'compra'], route: '/shop', response: 'Apro lo shop!' },
@@ -844,6 +960,14 @@ export function useStellaAgent() {
       { patterns: ['vai in live', 'apri live', 'streaming', 'dirette'], route: '/live', response: 'Ti porto nella sezione live!' },
       { patterns: ['apri radio', 'musica', 'radio', 'ascolta musica'], route: '/radio', response: 'Apro la radio!' },
       { patterns: ['impostazioni', 'apri impostazioni', 'settings', 'le impostazioni'], route: '/settings', response: 'Apro le impostazioni!' },
+      { patterns: ['risposta automatica chiamate', 'gestione chiamate', 'rispondi tu alle chiamate', 'impostazioni chiamate', 'segreteria'], route: '/call-auto-answer', response: 'Apro le impostazioni di risposta automatica alle chiamate!' },
+      { patterns: ['assistente ai', 'apri assistente', 'ai assistant', "l'assistente"], route: '/ai-assistant', response: 'Apro l\'assistente AI!' },
+      { patterns: ['crea richiesta servizio', 'nuova richiesta', 'richiedi un servizio'], route: '/marketplace/create-request', response: 'Apro la creazione di una nuova richiesta!' },
+      { patterns: ['crea casting', 'nuovo casting', 'pubblica casting'], route: '/marketplace/create-casting', response: 'Apro la creazione di un nuovo casting!' },
+      { patterns: ['invita collaboratore', 'invita dipendente', 'aggiungi al team'], route: '/business/team/invite', response: 'Apro gli inviti del team!' },
+      { patterns: ['attività team', 'attivita team', 'cosa fa il team'], route: '/business/team/activity', response: 'Apro l\'attività del team!' },
+      { patterns: ['privacy', 'informativa privacy'], route: '/privacy', response: 'Apro l\'informativa sulla privacy!' },
+      { patterns: ['termini', 'termini e condizioni', 'condizioni di servizio'], route: '/terms', response: 'Apro i termini e condizioni!' },
       { patterns: ['esplora', 'apri esplora', 'scopri'], route: '/explore', response: 'Apro la sezione esplora!' },
       { patterns: ['crea post', 'pubblica', 'nuovo post', 'scrivi post', 'fai un post'], route: '/create-post', response: 'Apro la creazione di un nuovo post!' },
       { patterns: ['le mie prenotazioni', 'mostra prenotazioni', 'i miei appuntamenti', 'appuntamenti'], route: '/my-bookings', response: 'Ecco le tue prenotazioni!' },
@@ -1070,22 +1194,29 @@ export function useStellaAgent() {
     }
 
     // ── BOOKING ────────────────────────────────────────────────────────────
+    // Stella now performs a real end-to-end booking: finds the professional,
+    // checks their actual calendar for the next free slot, and books it —
+    // not just a navigation shortcut like before.
     const bookMatch = stripped.match(/(?:prenota|prenotazione|appuntamento)\s+(?:con|da|per)\s+(.+)/);
     if (bookMatch) {
       const target = bookMatch[1].trim();
       return {
         id: Date.now().toString(), type: 'book', text,
-        response: `Cerco ${target} per la prenotazione...`, requiresConfirmation: false, silent: true,
+        response: `Vuoi che prenoti il primo orario libero con ${target}?`,
+        requiresConfirmation: true, silent: false,
         execute: async () => {
-          const profiles = await findProfileByName(target);
-          if (profiles.length > 0) {
-            navigate(`/stylist/${profiles[0].user_id}`);
-            toast.success(`🌟 Stella: Apro la pagina di ${profiles[0].display_name || target} per prenotare!`);
+          const result = await autoBookAppointment(target, text);
+          if (result.bookingId) {
+            addMessage({ role: 'stella', content: result.message, type: 'action_result' });
+            toast.success(`🌟 Stella: ${result.message}`);
+            stellaSpeak(result.message);
+            navigate(`/checkout?amount=${result.price || 0}&desc=${encodeURIComponent(`Prenotazione con ${target}`)}&type=booking&ref=${result.bookingId}`);
           } else {
+            addMessage({ role: 'stella', content: result.message, type: 'action_result' });
+            toast.info(`🌟 Stella: ${result.message}`);
+            stellaSpeak(result.message);
             navigate('/stylists');
-            toast.info(`🌟 Stella: Non ho trovato "${target}", mostro i professionisti.`);
           }
-          stellaSpeak(`Cerco ${target} per la prenotazione!`);
         },
       };
     }
@@ -1145,7 +1276,7 @@ export function useStellaAgent() {
         execute: async () => {
           const result = await getUserStats();
           addMessage({ role: 'stella', content: result, type: 'action_result' });
-          stellaSpeak(result.replace(/[•📊\n]/g, ', '));
+          stellaSpeak(result.replace(/[•📊\n]/gu, ', '));
           toast.success(`🌟 Stella: Ecco le tue stats!`);
         } };
     }
@@ -1342,7 +1473,7 @@ export function useStellaAgent() {
     }
 
     return null;
-  }, [navigate, profile, user, goToProfile, likeLatestPost, followUser, unfollowUser, sendMessageTo, findProfileByName, stellaSpeak, commentOnPost, createPost, manageBooking, findNearbyProfessionals, addMessage, getUserStats, getNotificationsSummary, getUpcomingBookings, clickVisibleAction, callContact]);
+  }, [navigate, profile, user, goToProfile, likeLatestPost, followUser, unfollowUser, sendMessageTo, findProfileByName, stellaSpeak, commentOnPost, createPost, manageBooking, autoBookAppointment, findNearbyProfessionals, addMessage, getUserStats, getNotificationsSummary, getUpcomingBookings, clickVisibleAction, callContact]);
 
   // ── AI Intent Parsing (multilingual — understands every language) ──────
   const executeAIIntent = useCallback(async (intent: string, params: any, response: string) => {

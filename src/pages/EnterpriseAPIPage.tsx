@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Key, Copy, Eye, EyeOff, BarChart3, Webhook, Code, RefreshCw, Plus, Trash2, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Key, Copy, Eye, EyeOff, BarChart3, Webhook, Code, RefreshCw, Plus, Trash2, Check, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,15 +9,17 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ApiKey {
   id: string;
   name: string;
-  key: string;
-  created: string;
-  lastUsed: string;
-  calls: number;
+  key_prefix: string;
   active: boolean;
+  calls_count: number;
+  last_used_at: string | null;
+  created_at: string;
 }
 
 interface WebhookConfig {
@@ -28,11 +30,8 @@ interface WebhookConfig {
   lastTriggered: string;
 }
 
-const MOCK_KEYS: ApiKey[] = [
-  { id: "1", name: "Production Key", key: "sk_live_abc...xyz", created: "2026-03-01", lastUsed: "2026-04-11", calls: 12450, active: true },
-  { id: "2", name: "Staging Key", key: "sk_test_def...uvw", created: "2026-02-15", lastUsed: "2026-04-10", calls: 3200, active: true },
-];
-
+// Webhooks below are illustrative/reference only for now — there is no
+// delivery backend yet. API keys are real (Supabase-backed).
 const MOCK_WEBHOOKS: WebhookConfig[] = [
   { id: "1", url: "https://api.myapp.com/webhooks/booking", events: ["booking.created", "booking.updated"], active: true, lastTriggered: "2 min fa" },
   { id: "2", url: "https://api.myapp.com/webhooks/payment", events: ["payment.completed"], active: true, lastTriggered: "1h fa" },
@@ -58,40 +57,106 @@ const WEBHOOK_EVENTS = [
 
 export default function EnterpriseAPIPage() {
   const navigate = useNavigate();
-  const [keys, setKeys] = useState(MOCK_KEYS);
+  const { user } = useAuth();
+  const [keys, setKeys] = useState<ApiKey[]>([]);
   const [webhooks] = useState(MOCK_WEBHOOKS);
   const [showKey, setShowKey] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
-  const usage = { current: 12450, limit: 50000, percentage: 24.9 };
+  const usageCurrent = keys.reduce((sum, k) => sum + k.calls_count, 0);
+  const usageLimit = 50000;
+  const usagePercentage = usageLimit ? (usageCurrent / usageLimit) * 100 : 0;
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("id, name, key_prefix, active, calls_count, last_used_at, created_at")
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Errore nel caricamento delle API key:", error);
+        toast.error("Impossibile caricare le API key");
+      } else {
+        setKeys(data || []);
+      }
+      setLoading(false);
+    })();
+  }, [user]);
+
+  const sha256Hex = async (text: string) => {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  };
 
   const handleCopyKey = (key: string) => {
     navigator.clipboard.writeText(key);
     toast.success("API Key copiata!");
   };
 
-  const handleGenerateKey = () => {
+  const handleGenerateKey = async () => {
     if (!newKeyName.trim()) {
       toast.error("Inserisci un nome per la chiave");
       return;
     }
-    const newKey: ApiKey = {
-      id: Date.now().toString(),
-      name: newKeyName,
-      key: `sk_live_${Math.random().toString(36).slice(2, 10)}...${Math.random().toString(36).slice(2, 6)}`,
-      created: new Date().toISOString().split("T")[0],
-      lastUsed: "Mai",
-      calls: 0,
-      active: true,
-    };
-    setKeys(prev => [...prev, newKey]);
+    if (!user) {
+      toast.error("Devi essere loggato");
+      return;
+    }
+    setGenerating(true);
+    const secret = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+      .map(b => b.toString(16).padStart(2, "0")).join("");
+    const fullKey = `sk_live_${secret}`;
+    const prefix = `sk_live_${secret.slice(0, 8)}...`;
+    const hash = await sha256Hex(fullKey);
+
+    const { data, error } = await supabase
+      .from("api_keys")
+      .insert({ owner_id: user.id, name: newKeyName.trim(), key_prefix: prefix, key_hash: hash })
+      .select("id, name, key_prefix, active, calls_count, last_used_at, created_at")
+      .single();
+
+    setGenerating(false);
+
+    if (error || !data) {
+      console.error("Errore nella creazione dell'API key:", error);
+      toast.error("Errore nella generazione della chiave");
+      return;
+    }
+
+    setKeys(prev => [data, ...prev]);
     setNewKeyName("");
-    toast.success("Nuova API Key generata!");
+    setRevealedKey(fullKey);
+    setShowKey(data.id);
+    toast.success("Nuova API Key generata! Copiala ora: non potrai più vederla per intero.");
   };
 
-  const handleDeleteKey = (id: string) => {
+  const handleDeleteKey = async (id: string) => {
+    const previous = keys;
     setKeys(prev => prev.filter(k => k.id !== id));
+    const { error } = await supabase.from("api_keys").delete().eq("id", id);
+    if (error) {
+      console.error("Errore nell'eliminazione dell'API key:", error);
+      toast.error("Errore nell'eliminazione, ripristino la chiave");
+      setKeys(previous);
+      return;
+    }
+    if (revealedKey && showKey === id) setRevealedKey(null);
     toast.success("API Key eliminata");
+  };
+
+  const handleToggleKey = async (id: string, current: boolean) => {
+    setKeys(prev => prev.map(k => k.id === id ? { ...k, active: !current } : k));
+    const { error } = await supabase.from("api_keys").update({ active: !current }).eq("id", id);
+    if (error) {
+      console.error("Errore nell'aggiornamento dell'API key:", error);
+      toast.error("Errore nell'aggiornamento");
+      setKeys(prev => prev.map(k => k.id === id ? { ...k, active: current } : k));
+    }
   };
 
   const methodColor = (m: string) => {
@@ -122,10 +187,10 @@ export default function EnterpriseAPIPage() {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold">Utilizzo API</span>
               <span className="text-xs text-muted-foreground">
-                {usage.current.toLocaleString()} / {usage.limit.toLocaleString()} calls
+                {usageCurrent.toLocaleString()} / {usageLimit.toLocaleString()} calls
               </span>
             </div>
-            <Progress value={usage.percentage} className="h-2" />
+            <Progress value={usagePercentage} className="h-2" />
             <p className="text-[10px] text-muted-foreground mt-1">Reset: 1 maggio 2026</p>
           </CardContent>
         </Card>
@@ -149,12 +214,23 @@ export default function EnterpriseAPIPage() {
                   value={newKeyName}
                   onChange={e => setNewKeyName(e.target.value)}
                   className="text-sm"
+                  disabled={generating}
                 />
-                <Button size="sm" onClick={handleGenerateKey}>
-                  <Plus className="w-4 h-4" />
+                <Button size="sm" onClick={handleGenerateKey} disabled={generating}>
+                  {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 </Button>
               </CardContent>
             </Card>
+
+            {loading && (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {!loading && keys.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">Nessuna API key ancora, generane una qui sopra.</p>
+            )}
 
             {keys.map(k => (
               <Card key={k.id}>
@@ -164,18 +240,26 @@ export default function EnterpriseAPIPage() {
                       <Key className="w-4 h-4 text-primary" />
                       <span className="text-sm font-semibold">{k.name}</span>
                     </div>
-                    <Switch checked={k.active} onCheckedChange={() => {
-                      setKeys(prev => prev.map(key => key.id === k.id ? { ...key, active: !key.active } : key));
-                    }} />
+                    <Switch checked={k.active} onCheckedChange={() => handleToggleKey(k.id, k.active)} />
                   </div>
                   <div className="flex items-center gap-2 bg-muted rounded-lg p-2">
-                    <code className="text-xs flex-1 font-mono">
-                      {showKey === k.id ? k.key : "sk_live_•••••••••••"}
+                    <code className="text-xs flex-1 font-mono truncate">
+                      {showKey === k.id && revealedKey ? revealedKey : `${k.key_prefix}••••••••`}
                     </code>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowKey(showKey === k.id ? null : k.id)} aria-label="Mostra chiave">
-                      {showKey === k.id ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleCopyKey(k.key)} aria-label="Copia chiave">
+                    {revealedKey && showKey === k.id ? (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowKey(null)} aria-label="Nascondi chiave">
+                        <EyeOff className="w-3 h-3" />
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled title="Per sicurezza la chiave completa si vede solo alla creazione" aria-label="Chiave non visibile">
+                        <Eye className="w-3 h-3 opacity-30" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6"
+                      onClick={() => handleCopyKey(showKey === k.id && revealedKey ? revealedKey : k.key_prefix)}
+                      aria-label="Copia chiave"
+                    >
                       <Copy className="w-3 h-3" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDeleteKey(k.id)} aria-label="Elimina chiave">
@@ -183,9 +267,9 @@ export default function EnterpriseAPIPage() {
                     </Button>
                   </div>
                   <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>Creata: {k.created}</span>
-                    <span>Ultimo uso: {k.lastUsed}</span>
-                    <span>{k.calls.toLocaleString()} calls</span>
+                    <span>Creata: {new Date(k.created_at).toLocaleDateString('it-IT')}</span>
+                    <span>Ultimo uso: {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString('it-IT') : "Mai"}</span>
+                    <span>{k.calls_count.toLocaleString()} calls</span>
                   </div>
                 </CardContent>
               </Card>

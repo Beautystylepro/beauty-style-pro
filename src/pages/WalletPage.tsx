@@ -144,7 +144,20 @@ export default function WalletPage() {
     toast.success("Metodo rimosso");
   };
 
+  // GATE: real bank payouts require Stripe Connect (KYC), which needs the
+  // company to be formally registered first. Until then, block execution
+  // with an honest message instead of silently debiting balance with no
+  // real transfer behind it. Flip this to true once Stripe Connect payouts
+  // are wired into process-withdrawal.
+  const WITHDRAWALS_LIVE = false;
+
   const handleWithdraw = async () => {
+    if (!WITHDRAWALS_LIVE) {
+      toast.info("I prelievi reali non sono ancora attivi", {
+        description: "Saranno disponibili a breve, dopo l'attivazione del sistema di pagamento verso conti bancari. Il tuo saldo resta al sicuro.",
+      });
+      return;
+    }
     const amt = parseFloat(withdrawAmount);
     if (!amt || amt <= 0) { toast.error("Importo non valido"); return; }
     const balance = profile?.qr_coins || 0;
@@ -622,7 +635,15 @@ export default function WalletPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {profile?.iban ? (
+            {!WITHDRAWALS_LIVE ? (
+              <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-2">
+                <p className="text-sm font-semibold text-amber-600">Prelievi in arrivo 🚧</p>
+                <p className="text-xs text-muted-foreground">
+                  Stiamo attivando il sistema di pagamento verso conti bancari reali.
+                  Il tuo saldo di {(profile?.qr_coins || 0).toLocaleString()} QR Coins resta al sicuro e sarà prelevabile appena il servizio sarà attivo.
+                </p>
+              </div>
+            ) : profile?.iban ? (
               <>
                 <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-blue-500" />

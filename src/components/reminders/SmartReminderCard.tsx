@@ -1,4 +1,4 @@
-import { Calendar, Clock, Sparkles, CheckCircle, X, Phone } from "lucide-react";
+import { Calendar, Clock, Sparkles, CheckCircle, X, Phone, Truck, Tag } from "lucide-react";
 import { SmartReminder, useUpdateReminderStatus, useRescheduleReminder } from "@/hooks/useSmartReminders";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -141,6 +141,27 @@ export default function SmartReminderCard({ reminder }: SmartReminderCardProps) 
           </p>
         )}
       </div>
+
+      {/* Shipping Info */}
+      {reminder.shipping_enabled && (
+        <div className="mb-4 p-2 rounded-lg bg-primary/5 border border-primary/20 space-y-1">
+          <p className="text-xs flex items-center gap-1 font-semibold text-primary">
+            <Truck className="w-3 h-3" /> Spedizione richiesta
+          </p>
+          {reminder.shipping_address && (
+            <p className="text-xs text-muted-foreground pl-4">{reminder.shipping_address}</p>
+          )}
+          {reminder.shipping_notes && (
+            <p className="text-xs text-muted-foreground pl-4">Note: {reminder.shipping_notes}</p>
+          )}
+          {reminder.free_shipping && (
+            <p className="text-xs text-green-500 flex items-center gap-1 pl-4">
+              <Tag className="w-3 h-3" /> Spedizione gratuita
+              {reminder.promo_code ? ` (${reminder.promo_code})` : ""}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       {!showReschedule ? (

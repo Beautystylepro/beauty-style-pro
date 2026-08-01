@@ -50,8 +50,12 @@ const safeStorage = {
         const value = browserStorage.getItem(key);
         if (value !== null) {
           memoryStore.set(key, value);
-          return value;
+        } else {
+          // Key is genuinely absent in real storage (e.g. cleared externally) —
+          // treat that as authoritative instead of returning a stale cached value.
+          memoryStore.delete(key);
         }
+        return value;
       } catch {
         // fall back to memory store
       }

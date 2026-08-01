@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import { DEFAULT_TIME_SLOTS, getAvailableSlots } from "@/lib/availability";
 
 interface Service {
   id: string;
@@ -31,10 +32,7 @@ const locationOptions = [
   { id: "online", label: "Online", Icon: Monitor },
 ];
 
-const timeSlots = [
-  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-  "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00",
-];
+const timeSlots = DEFAULT_TIME_SLOTS;
 
 export default function BookingPage() {
   const navigate = useNavigate();
@@ -58,6 +56,8 @@ export default function BookingPage() {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [availableSlots, setAvailableSlots] = useState<string[]>(timeSlots);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -99,6 +99,24 @@ export default function BookingPage() {
 
   const selectedServiceData = services.find(s => s.id === selectedService);
 
+  useEffect(() => {
+    if (!professional?.id || !selectedDate) return;
+    let cancelled = false;
+    setCheckingAvailability(true);
+    getAvailableSlots(professional.id, selectedDate, selectedServiceData?.duration_minutes || 30)
+      .then((slots) => {
+        if (cancelled) return;
+        setAvailableSlots(slots);
+        if (selectedTime && !slots.includes(selectedTime)) {
+          setSelectedTime(null);
+          toast.info("Quell'orario non è più disponibile, scegline un altro");
+        }
+      })
+      .finally(() => { if (!cancelled) setCheckingAvailability(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [professional?.id, selectedDate, selectedServiceData?.duration_minutes]);
+
   const handleConfirm = async () => {
     if (!user) {
       toast.error("Devi effettuare l'accesso per prenotare");
@@ -111,6 +129,21 @@ export default function BookingPage() {
     }
 
     setLoading(true);
+
+    const freshSlots = await getAvailableSlots(professional.id, selectedDate, selectedServiceData?.duration_minutes || 30);
+    if (!freshSlots.includes(selectedTime)) {
+      toast.error("Questo orario è appena stato prenotato da qualcun altro, scegline un altro");
+      setAvailableSlots(freshSlots);
+      setSelectedTime(null);
+      setLoading(false);
+      return;
+    }
+
+    const durationMinutes = selectedServiceData?.duration_minutes || 30;
+    const [startH, startM] = selectedTime.split(":").map(Number);
+    const endTotalMinutes = startH * 60 + startM + durationMinutes;
+    const endTime = `${Math.floor(endTotalMinutes / 60).toString().padStart(2, "0")}:${(endTotalMinutes % 60).toString().padStart(2, "0")}`;
+
     const { data: booking, error } = await supabase
       .from("bookings")
       .insert({
@@ -119,6 +152,7 @@ export default function BookingPage() {
         service_id: selectedServiceData?.id.startsWith("default-") ? undefined : selectedService,
         booking_date: selectedDate,
         start_time: selectedTime,
+        end_time: endTime,
         total_price: selectedServiceData?.price,
         notes: notes || undefined,
       })
@@ -283,24 +317,37 @@ export default function BookingPage() {
 
           {/* Time Selection */}
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
               <Clock className="w-4 h-4 inline mr-1" /> Seleziona Orario
+              {checkingAvailability && (
+                <span className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              )}
             </h3>
             <div className="grid grid-cols-4 gap-2">
-              {timeSlots.map(time => (
-                <button
-                  key={time}
-                  onClick={() => setSelectedTime(time)}
-                  className={`py-2 rounded-lg text-xs font-medium transition-all ${
-                    selectedTime === time
-                      ? "gradient-primary text-primary-foreground"
-                      : "bg-card hover:bg-muted"
-                  }`}
-                >
-                  {time}
-                </button>
-              ))}
+              {timeSlots.map(time => {
+                const isAvailable = availableSlots.includes(time);
+                return (
+                  <button
+                    key={time}
+                    onClick={() => isAvailable && setSelectedTime(time)}
+                    disabled={!isAvailable}
+                    title={isAvailable ? undefined : "Orario già prenotato"}
+                    className={`py-2 rounded-lg text-xs font-medium transition-all ${
+                      selectedTime === time
+                        ? "gradient-primary text-primary-foreground"
+                        : isAvailable
+                        ? "bg-card hover:bg-muted"
+                        : "bg-muted/40 text-muted-foreground/40 line-through cursor-not-allowed"
+                    }`}
+                  >
+                    {time}
+                  </button>
+                );
+              })}
             </div>
+            {!checkingAvailability && availableSlots.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-2">Nessun orario libero in questa data, prova un altro giorno.</p>
+            )}
           </div>
 
           {/* Location Selection */}

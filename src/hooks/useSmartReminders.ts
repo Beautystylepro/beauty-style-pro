@@ -18,6 +18,52 @@ export interface SmartReminder {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  shipping_enabled: boolean | null;
+  shipping_address: string | null;
+  shipping_notes: string | null;
+  free_shipping: boolean | null;
+  promo_code: string | null;
+  promo_discount: number | null;
+  product_id: string | null;
+  quantity: number | null;
+  total_price: number | null;
+  auto_reorder: boolean | null;
+}
+
+export interface ShippingPromoResult {
+  valid: boolean;
+  discount_type: string | null;
+  discount_value: number | null;
+  free_shipping: boolean | null;
+  message: string | null;
+}
+
+/** Validates and applies a shipping promo code via the apply_shipping_promo RPC. */
+export function useApplyShippingPromo() {
+  return useMutation({
+    mutationFn: async ({
+      code,
+      serviceType,
+      orderAmount = 0,
+    }: {
+      code: string;
+      serviceType: string;
+      orderAmount?: number;
+    }) => {
+      const { data, error } = await supabase.rpc("apply_shipping_promo", {
+        _code: code,
+        _service_type: serviceType,
+        _order_amount: orderAmount,
+      });
+
+      if (error) throw error;
+      const result = data?.[0] as ShippingPromoResult | undefined;
+      if (!result || !result.valid) {
+        throw new Error(result?.message || "Codice promo non valido");
+      }
+      return result;
+    },
+  });
 }
 
 export function useSmartReminders() {
@@ -116,7 +162,13 @@ export function useCreateManualReminder() {
       frequencyDays,
       professionalId,
       priority = 'medium',
-      notes
+      notes,
+      shippingEnabled,
+      shippingAddress,
+      shippingNotes,
+      freeShipping,
+      promoCode,
+      promoDiscount,
     }: {
       serviceType: string;
       serviceName: string;
@@ -125,6 +177,12 @@ export function useCreateManualReminder() {
       professionalId?: string;
       priority?: 'low' | 'medium' | 'high';
       notes?: string;
+      shippingEnabled?: boolean;
+      shippingAddress?: string;
+      shippingNotes?: string;
+      freeShipping?: boolean;
+      promoCode?: string;
+      promoDiscount?: number;
     }) => {
       const nextDate = new Date(lastServiceDate);
       nextDate.setDate(nextDate.getDate() + frequencyDays);
@@ -140,7 +198,13 @@ export function useCreateManualReminder() {
           frequency_days: frequencyDays,
           professional_id: professionalId || null,
           priority,
-          notes: notes || null
+          notes: notes || null,
+          shipping_enabled: shippingEnabled ?? false,
+          shipping_address: shippingAddress || null,
+          shipping_notes: shippingNotes || null,
+          free_shipping: freeShipping ?? false,
+          promo_code: promoCode || null,
+          promo_discount: promoDiscount ?? null,
         })
         .select()
         .single();

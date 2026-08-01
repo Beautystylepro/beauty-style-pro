@@ -494,7 +494,7 @@ export default function ChatPage() {
       const audio = new Audio(audioUrl);
       translationAudioRef.current = audio;
       audio.play().catch(() => {});
-    } catch {}
+    } catch { /* best-effort, ignore */ }
   };
 
   const startCallTranslation = () => {
