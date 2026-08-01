@@ -44,7 +44,7 @@ const reactionIcons = [
 export default function LiveBattlePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { awardCoins } = useQRCoinRewards();
 
   const [battles, setBattles] = useState<Battle[]>([]);
@@ -87,7 +87,14 @@ export default function LiveBattlePage() {
     if (withQRC) {
       const balance = profile?.qr_coins || 0;
       if (balance < qrcAmount) { toast.error("QRCoin insufficienti"); return; }
-      await supabase.from("profiles").update({ qr_coins: balance - qrcAmount }).eq("user_id", user.id);
+      const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+        body: { kind: "spend", amount: qrcAmount, reason: "battle_vote" },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error || "Voto con QRC fallito, riprova");
+        return;
+      }
+      refreshProfile();
     }
 
     const { error } = await supabase.from("battle_votes").insert({

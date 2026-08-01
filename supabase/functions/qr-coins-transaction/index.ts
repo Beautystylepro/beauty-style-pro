@@ -121,9 +121,12 @@ serve(async (req) => {
         description: reason, reference_type: reason,
       });
 
-      // Optional side-effect inserts (e.g. stream_tips row) supplied by the caller.
+      // Optional side-effect insert (e.g. stream_tips or challenge_donations
+      // row) supplied by the caller. The caller includes the correct
+      // user-reference column name for that table (it varies: user_id vs
+      // donor_id, etc.) — we don't force-inject a column that might not exist.
       if (body.sideEffect?.table && body.sideEffect?.row) {
-        await admin.from(body.sideEffect.table).insert({ ...body.sideEffect.row, user_id: user.id });
+        await admin.from(body.sideEffect.table).insert(body.sideEffect.row);
       }
 
       return new Response(JSON.stringify({ success: true, newBalance }), {
@@ -209,6 +212,80 @@ serve(async (req) => {
         user_id: user.id, amount, type: "earn", description: "Missione completata", reference_type: `mission_${missionId}`,
       });
       return new Response(JSON.stringify({ success: true, amount, newBalance }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (kind === "transfer") {
+      // Peer-to-peer QR Coin transfer. Debit + credit must both succeed or
+      // neither should count — if the credit step fails after a successful
+      // debit we refund the sender immediately rather than losing coins.
+      const amount = Number(body.amount);
+      const recipientUserId = String(body.recipientUserId || "");
+      if (!amount || amount <= 0 || !recipientUserId) {
+        return new Response(JSON.stringify({ error: "Dati non validi" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (recipientUserId === user.id) {
+        return new Response(JSON.stringify({ error: "Non puoi trasferire a te stesso" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: senderBalance, error: debitError } = await admin.rpc("debit_qr_coins", {
+        _user_id: user.id, _amount: amount,
+      });
+      if (debitError) {
+        const insufficient = debitError.message?.toLowerCase().includes("insufficient");
+        return new Response(JSON.stringify({ error: insufficient ? "Saldo insufficiente" : "Trasferimento fallito" }), {
+          status: insufficient ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: creditError } = await admin.rpc("credit_qr_coins", {
+        _user_id: recipientUserId, _amount: amount,
+      });
+      if (creditError) {
+        // Refund the sender since the credit side failed.
+        await admin.rpc("credit_qr_coins", { _user_id: user.id, _amount: amount });
+        console.error("transfer credit failed, refunded sender:", creditError);
+        return new Response(JSON.stringify({ error: "Trasferimento fallito, saldo ripristinato" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await admin.from("transactions").insert([
+        { user_id: user.id, amount: -amount, type: "spend", description: "Trasferimento inviato", reference_type: "p2p_transfer", reference_id: recipientUserId },
+        { user_id: recipientUserId, amount, type: "earn", description: "Trasferimento ricevuto", reference_type: "p2p_transfer", reference_id: user.id },
+      ]);
+
+      return new Response(JSON.stringify({ success: true, newBalance: senderBalance }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (kind === "quiz_win" || kind === "battle_win") {
+      // Same bounded-mitigation approach as spin_win: the score/result is
+      // still computed client-side, so this caps the accepted amount at a
+      // sane maximum rather than trusting the client fully.
+      const MAX_AMOUNT = kind === "quiz_win" ? 1000 : 500;
+      const amount = Math.min(Number(body.amount) || 0, MAX_AMOUNT);
+      if (amount <= 0) {
+        return new Response(JSON.stringify({ error: "Importo non valido" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: newBalance, error } = await admin.rpc("credit_qr_coins", {
+        _user_id: user.id, _amount: amount,
+      });
+      if (error) throw error;
+      await admin.from("transactions").insert({
+        user_id: user.id, amount, type: "earn",
+        description: kind === "quiz_win" ? "Vincita quiz live" : "Vincita battle live",
+        reference_type: kind,
+      });
+      return new Response(JSON.stringify({ success: true, newBalance }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

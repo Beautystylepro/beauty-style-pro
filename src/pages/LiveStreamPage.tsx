@@ -271,7 +271,7 @@ export default function LiveStreamPage() {
           kind: "spend",
           amount: selectedTip,
           reason: "live_tip",
-          sideEffect: { table: "stream_tips", row: { stream_id: selectedStream.id, amount: selectedTip } },
+          sideEffect: { table: "stream_tips", row: { stream_id: selectedStream.id, user_id: user.id, amount: selectedTip } },
         },
       });
       if (error || data?.error) throw new Error(data?.error || "Errore nell'invio del regalo");

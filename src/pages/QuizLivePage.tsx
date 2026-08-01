@@ -52,7 +52,7 @@ type GameState = "lobby" | "playing" | "result" | "wrong";
 
 export default function QuizLivePage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [gameState, setGameState] = useState<GameState>("lobby");
   const [currentQ, setCurrentQ] = useState(0);
   const [score, setScore] = useState(0);
@@ -134,7 +134,14 @@ export default function QuizLivePage() {
     if (!user) return;
     try {
       if (finalWon > 0) {
-        await supabase.from("profiles").update({ qr_coins: (profile?.qr_coins || 0) + finalWon }).eq("user_id", user.id);
+        const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+          body: { kind: "quiz_win", amount: finalWon },
+        });
+        if (error || data?.error) {
+          console.error("Quiz credit failed:", error || data?.error);
+        } else {
+          refreshProfile();
+        }
       }
     } catch (e) { console.error(e); }
   };

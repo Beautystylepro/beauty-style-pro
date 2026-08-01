@@ -159,18 +159,14 @@ export default function QRTransferModal({ open, onClose, onComplete }: QRTransfe
       if (!recipient) { toast.error("Utente non trovato"); setSending(false); return; }
       if (recipient.user_id === user.id) { toast.error("Non puoi inviare a te stesso"); setSending(false); return; }
 
-      // Deduct from sender
-      await supabase.from("profiles").update({ qr_coins: balance - amt }).eq("user_id", user.id);
-
-      // Add to recipient
-      const { data: recipientProfile } = await supabase.from("profiles").select("qr_coins").eq("user_id", recipient.user_id).maybeSingle();
-      await supabase.from("profiles").update({ qr_coins: (recipientProfile?.qr_coins || 0) + amt }).eq("user_id", recipient.user_id);
-
-      // Log transactions
-      await supabase.from("wallet_transactions").insert([
-        { user_id: user.id, type: "transfer_out", amount: -amt, description: `Inviato a ${recipient.display_name || "utente"}`, status: "completed" },
-        { user_id: recipient.user_id, type: "transfer_in", amount: amt, description: `Ricevuto da ${profile?.display_name || "utente"}`, status: "completed" },
-      ]);
+      const { data: txResult, error: txError } = await supabase.functions.invoke("qr-coins-transaction", {
+        body: { kind: "transfer", amount: amt, recipientUserId: recipient.user_id },
+      });
+      if (txError || txResult?.error) {
+        toast.error(txResult?.error || "Errore durante il trasferimento");
+        setSending(false);
+        return;
+      }
 
       // Use SECURITY DEFINER function to bypass RLS (can't insert notifications for other users)
       await supabase.rpc('create_notification', {

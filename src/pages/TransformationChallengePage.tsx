@@ -145,8 +145,17 @@ export default function TransformationChallengePage() {
     const balance = profile?.qr_coins || 0;
     if (balance < donateAmount) { toast.error("QRCoin insufficienti"); return; }
 
-    await supabase.from("challenge_donations").insert({ challenge_id: challengeId, donor_id: user.id, amount: donateAmount });
-    await supabase.from("profiles").update({ qr_coins: balance - donateAmount }).eq("user_id", user.id);
+    const { data, error } = await supabase.functions.invoke("qr-coins-transaction", {
+      body: {
+        kind: "spend", amount: donateAmount, reason: "challenge_donation",
+        sideEffect: { table: "challenge_donations", row: { challenge_id: challengeId, donor_id: user.id, amount: donateAmount } },
+      },
+    });
+    if (error || data?.error) {
+      toast.error(data?.error || "Donazione fallita, riprova");
+      return;
+    }
+    refreshProfile();
     setChallenges(prev => prev.map(c => c.id === challengeId ? { ...c, qr_coin_received: c.qr_coin_received + donateAmount } : c));
     setShowDonate(null);
     toast.success(`+${donateAmount} QRC donati! 🎉`);
