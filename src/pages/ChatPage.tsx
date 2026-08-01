@@ -36,6 +36,7 @@ interface Message {
   mediaUrl?: string;
   fileName?: string;
   duration?: number;
+  read?: boolean;
 }
 
 interface SearchedUser {
@@ -54,6 +55,9 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -161,9 +165,67 @@ export default function ChatPage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Separate listener for read-receipt updates: when the other participant
+    // opens the chat and their client marks our messages as read=true, this
+    // updates our double-check ticks live without needing a refresh.
+    const readChannel = supabase
+      .channel(`messages-read-${selectedChat.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${selectedChat.id}`,
+      }, (payload) => {
+        const msg = payload.new as any;
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: !!msg.read } : m));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); supabase.removeChannel(readChannel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChat, user, autoTranslate]);
+  }, [selectedChat]);
+
+  // Typing indicator: uses Supabase Presence to broadcast "I'm typing" state
+  // scoped to this conversation, so it clears automatically if the other
+  // person closes the tab (no stale "typing..." stuck on screen).
+  useEffect(() => {
+    if (!selectedChat || !user) return;
+    const typingChannel = supabase.channel(`typing-${selectedChat.id}`, {
+      config: { presence: { key: user.id } },
+    });
+
+    typingChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = typingChannel.presenceState();
+        const someoneElseTyping = Object.entries(state).some(
+          ([key, entries]) => key !== user.id && (entries as any[]).some(e => e.typing)
+        );
+        setOtherIsTyping(someoneElseTyping);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await typingChannel.track({ typing: false });
+        }
+      });
+
+    typingChannelRef.current = typingChannel;
+
+    return () => {
+      supabase.removeChannel(typingChannel);
+      typingChannelRef.current = null;
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [selectedChat, user]);
+
+  const notifyTyping = () => {
+    const channel = typingChannelRef.current;
+    if (!channel) return;
+    channel.track({ typing: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      channel.track({ typing: false });
+    }, 2500);
+  };
 
   // Auto-translate all existing "other" messages when autoTranslate turns on
   useEffect(() => {
@@ -240,6 +302,7 @@ export default function ChatPage() {
         time: new Date(m.created_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
         type: (m.message_type || "text") as MessageType,
         mediaUrl: m.image_url || undefined,
+        read: !!m.read,
       })));
       await supabase.from("messages").update({ read: true }).eq("conversation_id", conversationId).neq("sender_id", user?.id || "");
     }
@@ -291,6 +354,8 @@ export default function ChatPage() {
     if (!newMessage.trim() || !selectedChat || !user) return;
     const content = newMessage;
     setNewMessage("");
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingChannelRef.current?.track({ typing: false });
     setMessages(prev => [...prev, { id: Date.now().toString(), sender: "me", content, time: now(), type: "text" }]);
     await supabase.from("messages").insert({
       conversation_id: selectedChat.id,
@@ -789,12 +854,25 @@ export default function ChatPage() {
                 {msg.type !== "image" && msg.type !== "video" && (
                   <div className={`flex items-center justify-end gap-1 mt-1`}>
                     <span className={`text-xs ${msg.sender === "me" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{msg.time}</span>
-                    {msg.sender === "me" && <CheckCheck className="w-3.5 h-3.5 text-primary-foreground/60" />}
+                    {msg.sender === "me" && (
+                      msg.read
+                        ? <CheckCheck className="w-3.5 h-3.5 text-blue-400" />
+                        : <CheckCheck className="w-3.5 h-3.5 text-primary-foreground/40" />
+                    )}
                   </div>
                 )}
               </div>
             </div>
           ))}
+          {otherIsTyping && (
+            <div className="flex justify-start">
+              <div className="bg-muted rounded-2xl px-4 py-3 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -845,7 +923,7 @@ export default function ChatPage() {
               </button>
               <input
                 value={newMessage}
-                onChange={e => setNewMessage(e.target.value)}
+                onChange={e => { setNewMessage(e.target.value); notifyTyping(); }}
                 onKeyPress={e => e.key === "Enter" && sendMessage()}
                 placeholder="Scrivi un messaggio..."
                 className="flex-1 h-10 rounded-full bg-muted px-4 text-sm focus:outline-none"
