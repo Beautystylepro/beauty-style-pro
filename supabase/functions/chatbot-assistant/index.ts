@@ -493,20 +493,21 @@ ${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidat
       // Get enriched user context
       const { data: profile } = await supabase
         .from("profiles")
-        .select("user_type, display_name, qr_coins, city, bio, follower_count, following_count, avatar_url, created_at, iban, verification_status")
+        .select("user_type, display_name, qr_coins, city, bio, follower_count, following_count, avatar_url, created_at, verification_status")
         .eq("user_id", user_id)
         .maybeSingle();
 
       const userType = profile?.user_type || 'client';
 
       // Fetch activity stats in parallel
-      const [postsRes, bookingsRes, streamsRes, subsRes, transRes, proRes] = await Promise.all([
+      const [postsRes, bookingsRes, streamsRes, subsRes, transRes, proRes, privateRes] = await Promise.all([
         supabase.from("posts").select("id", { count: "exact", head: true }).eq("user_id", user_id),
         supabase.from("bookings").select("id", { count: "exact", head: true }).eq("client_id", user_id),
         supabase.from("live_streams").select("id", { count: "exact", head: true }).eq("status", "live"),
         supabase.from("user_subscriptions").select("*, subscription_plans(name, slug)").eq("user_id", user_id).eq("status", "active").limit(1).maybeSingle(),
         supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", user_id),
         supabase.from("professionals").select("id, specialty, rating, review_count").eq("user_id", user_id).maybeSingle(),
+        supabase.from("profiles_private").select("iban").eq("user_id", user_id).maybeSingle(),
       ]);
 
       const dynamicPrompt = getSystemPrompt(userType);
@@ -537,7 +538,7 @@ CONTESTO UTENTE ATTUALE:
 - Transazioni: ${transRes.count || 0}
 - Giorni attivo: ${daysActive}
 - Profilo completo: ${(profile?.bio && profile?.avatar_url) ? 'Sì' : 'No — suggerisci /edit-profile'}
-- IBAN collegato: ${profile?.iban ? 'Sì' : 'No'}
+- IBAN collegato: ${privateRes.data?.iban ? 'Sì' : 'No'}
 - Verifica: ${profile?.verification_status || 'pending'}
 - Live attive ora: ${streamsRes.count || 0}${proInfo}`;
 

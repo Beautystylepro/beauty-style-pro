@@ -132,9 +132,9 @@ async function callAI(
 // ══════════════════════════════════════════════════════════════════════
 
 async function buildUserContext(supabase: any, userId: string): Promise<string> {
-  const [profileRes, postsRes, bookingsRes, subsRes, transRes, proRes] = await Promise.all([
+  const [profileRes, postsRes, bookingsRes, subsRes, transRes, proRes, privateRes] = await Promise.all([
     supabase.from("profiles")
-      .select("user_type, display_name, qr_coins, city, bio, follower_count, following_count, avatar_url, created_at, iban, verification_status")
+      .select("user_type, display_name, qr_coins, city, bio, follower_count, following_count, avatar_url, created_at, verification_status")
       .eq("user_id", userId).maybeSingle(),
     supabase.from("posts").select("id", { count: "exact", head: true }).eq("user_id", userId),
     supabase.from("bookings").select("id", { count: "exact", head: true }).eq("client_id", userId),
@@ -143,6 +143,7 @@ async function buildUserContext(supabase: any, userId: string): Promise<string> 
     supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", userId),
     supabase.from("professionals").select("id, specialty, rating, review_count")
       .eq("user_id", userId).maybeSingle(),
+    supabase.from("profiles_private").select("iban").eq("user_id", userId).maybeSingle(),
   ]);
 
   const p = profileRes.data;
@@ -151,6 +152,7 @@ async function buildUserContext(supabase: any, userId: string): Promise<string> 
   const daysActive = p.created_at ? Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000) : 0;
   const sub = subsRes.data ? `${(subsRes.data as any).subscription_plans?.name || 'Attivo'}` : 'Free';
   const pro = proRes.data;
+  const hasIban = !!privateRes.data?.iban;
 
   return `
 
@@ -159,7 +161,7 @@ CONTESTO UTENTE:
 - QRC: ${p.qr_coins || 0} | Piano: ${sub} | Giorni attivo: ${daysActive}
 - Follower: ${p.follower_count || 0} | Following: ${p.following_count || 0}
 - Post: ${postsRes.count || 0} | Prenotazioni: ${bookingsRes.count || 0} | Transazioni: ${transRes.count || 0}
-- Profilo completo: ${(p.bio && p.avatar_url) ? 'Sì' : 'No'} | IBAN: ${p.iban ? 'Sì' : 'No'} | Verifica: ${p.verification_status || 'pending'}${
+- Profilo completo: ${(p.bio && p.avatar_url) ? 'Sì' : 'No'} | IBAN: ${hasIban ? 'Sì' : 'No'} | Verifica: ${p.verification_status || 'pending'}${
   pro ? `\n- Specialità: ${pro.specialty || 'N/A'} | Rating: ${pro.rating || 0}/5 (${pro.review_count || 0} rec.)` : ''
 }`;
 }

@@ -12,6 +12,17 @@ export interface AppNotification {
   created_at: string;
 }
 
+// Public VAPID key — safe to expose client-side (it's the "public" half of
+// the key pair; only the matching private key on the server can sign pushes).
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from(rawData, (c) => c.charCodeAt(0));
+}
+
 // Register Service Worker for push notifications + save subscription to DB
 async function registerPushNotifications(userId?: string) {
   if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
@@ -23,21 +34,18 @@ async function registerPushNotifications(userId?: string) {
     const registration = await navigator.serviceWorker.register('/sw.js');
     await navigator.serviceWorker.ready;
 
-    // Try to subscribe to Web Push (VAPID) for background notifications
-    // This enables push even when the app is completely closed (like Facebook/TikTok)
+    // Subscribe to Web Push (VAPID) for background notifications — this
+    // enables push even when the app is completely closed (like Facebook/TikTok).
     if (registration.pushManager && userId) {
       try {
-        // Use the public VAPID key for push subscription
-        // A real VAPID key would be set in the env but we still attempt subscription
         let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
-          // Try to subscribe — will gracefully fail without a real VAPID key
+        if (!subscription && VAPID_PUBLIC_KEY) {
           try {
             subscription = await registration.pushManager.subscribe({
               userVisibleOnly: true,
-              // applicationServerKey would normally be a real VAPID public key
-            } as PushSubscriptionOptionsInit);
-          } catch { /* No VAPID key configured — SW push still works via Supabase realtime */ }
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            });
+          } catch { /* permission or browser support issue — realtime fallback still active */ }
         }
         // Store subscription endpoint in Supabase so server can push later
         if (subscription) {

@@ -63,7 +63,7 @@ serve(async (req) => {
             amount: (session.amount_total || 0) / 100,
             payment_method: "stripe",
             status: "paid",
-            stripe_session_id: session.id,
+            metadata: { stripe_session_id: session.id },
           });
           logStep("Receipt created for one-off payment");
 
