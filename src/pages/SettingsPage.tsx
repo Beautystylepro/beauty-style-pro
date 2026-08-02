@@ -185,6 +185,7 @@ export default function SettingsPage() {
               <Toggle value={emailNotif} onChange={() => setEmailNotif(!emailNotif)} />
             </div>
             <SettingRow icon={Bell} label="Segreteria AI Stella (chiamate)" onClick={() => navigate("/call-auto-answer")} />
+            <SettingRow icon={Bell} label="Segreteria AI Stella (chat)" onClick={() => navigate("/chat-secretary")} />
           </div>
         </section>
 

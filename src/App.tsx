@@ -58,6 +58,7 @@ const MapSearchPage = lazy(() => import("./pages/MapSearchPage"));
 const HomeServicePage = lazy(() => import("./pages/HomeServicePage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const CallAutoAnswerSettingsPage = lazy(() => import("./pages/CallAutoAnswerSettingsPage"));
+const ChatSecretarySettingsPage = lazy(() => import("./pages/ChatSecretarySettingsPage"));
 const ReviewPage = lazy(() => import("./pages/ReviewPage"));
 const ReferralPage = lazy(() => import("./pages/ReferralPage"));
 const AnalyticsDashboardPage = lazy(() => import("./pages/AnalyticsDashboardPage"));
@@ -196,6 +197,7 @@ const App = () => {
             <Route path="/home-service/:id" element={<P><HomeServicePage /></P>} />
             <Route path="/settings" element={<P><SettingsPage /></P>} />
             <Route path="/call-auto-answer" element={<P><CallAutoAnswerSettingsPage /></P>} />
+            <Route path="/chat-secretary" element={<P><ChatSecretarySettingsPage /></P>} />
             <Route path="/referral" element={<P><ReferralPage /></P>} />
             <Route path="/analytics" element={<P><AnalyticsDashboardPage /></P>} />
             <Route path="/installments" element={<P><InstallmentsPage /></P>} />

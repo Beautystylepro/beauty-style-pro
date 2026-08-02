@@ -37,6 +37,7 @@ interface Message {
   fileName?: string;
   duration?: number;
   read?: boolean;
+  isAiReply?: boolean;
 }
 
 interface SearchedUser {
@@ -153,6 +154,7 @@ export default function ChatPage() {
             time: new Date(msg.created_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
             type: (msg.message_type || "text") as MessageType,
             mediaUrl: msg.image_url,
+            isAiReply: !!msg.is_ai_reply,
           };
           setMessages(prev => [...prev, newMsg]);
           // Auto-translate incoming message in real-time
@@ -303,6 +305,7 @@ export default function ChatPage() {
         type: (m.message_type || "text") as MessageType,
         mediaUrl: m.image_url || undefined,
         read: !!m.read,
+        isAiReply: !!(m as any).is_ai_reply,
       })));
       await supabase.from("messages").update({ read: true }).eq("conversation_id", conversationId).neq("sender_id", user?.id || "");
     }
@@ -844,6 +847,11 @@ export default function ChatPage() {
                       <p className={`text-xs ${msg.sender === "me" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>Tocca per aprire</p>
                     </div>
                   </a>
+                )}
+                {msg.isAiReply && (
+                  <p className={`text-[10px] mb-0.5 opacity-70 ${msg.sender === "me" ? "text-primary-foreground" : "text-muted-foreground"}`}>
+                    🤖 Risposta automatica
+                  </p>
                 )}
                 {msg.content && <p className="text-sm">{msg.content}</p>}
                 {msg.content && translatedMessages[msg.id] && (
