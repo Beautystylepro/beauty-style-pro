@@ -15,7 +15,7 @@ export default function CallManager() {
     acceptCall, rejectCall, endCall, toggleMic, toggleCamera,
     stellaAnswering, dismissStellaAnswering,
   } = useCall();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const nav = useNavigate();
   const [isPremium, setIsPremium] = useState(false);
 
@@ -117,7 +117,9 @@ export default function CallManager() {
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const speechRecRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const liveTranslationActiveRef = useRef(false);
+  const [liveTranslationOn, setLiveTranslationOn] = useState(false);
   const translationAudioRef = useRef<HTMLAudioElement | null>(null);
   const isProcessingRef = useRef(false);
   const [muted, setMuted] = useState(false);
@@ -187,8 +189,9 @@ export default function CallManager() {
   }, [status]);
 
   const stopLiveTranslation = () => {
-    speechRecRef.current?.stop?.();
-    speechRecRef.current = null;
+    liveTranslationActiveRef.current = false;
+    try { mediaRecorderRef.current?.stop(); } catch { /* already stopped */ }
+    mediaRecorderRef.current = null;
     if (translationAudioRef.current) {
       translationAudioRef.current.pause();
       translationAudioRef.current = null;
@@ -196,6 +199,7 @@ export default function CallManager() {
     setMySpeechTranslation("");
     setPeerTranslationText("");
     setCallTranslating(false);
+    setLiveTranslationOn(false);
   };
 
   useEffect(() => {
@@ -204,84 +208,93 @@ export default function CallManager() {
     }
   }, [status]);
 
-  const startLiveTranslation = () => {
-    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!Recognition) {
-      toast.error("Traduzione vocale non supportata su questo dispositivo");
-      return;
-    }
+  // Real automatic spoken-language detection: the browser's own Web
+  // Speech API can't do this (it requires a fixed language guess set in
+  // advance). Instead we record short raw-audio chunks from the mic and
+  // send them to voice-transcribe, which uses Gemini's native audio
+  // understanding — Gemini genuinely transcribes whatever language it
+  // hears without being told in advance, so a bilingual friend switching
+  // languages mid-call is handled correctly, not just a best-guess.
+  const recordNextChunk = () => {
+    if (!liveTranslationActiveRef.current || !localStream) return;
+    const audioOnlyStream = new MediaStream(localStream.getAudioTracks());
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+    const recorder = new MediaRecorder(audioOnlyStream, { mimeType });
+    const chunks: BlobPart[] = [];
 
-    const recognition = new Recognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    // Web Speech API requires knowing the spoken language in advance —
-    // there's no true "auto-detect what's being said" mode in the
-    // browser itself. We use the LOCAL user's own registered language as
-    // the best available default (more reliable than the browser's
-    // generic locale, which is often wrong on shared/travel devices),
-    // but if the actual speaker uses a different language than their
-    // profile says, transcription quality will suffer — a real
-    // limitation of the underlying browser technology, not something we
-    // can fully engineer around client-side. The translation step itself
-    // (Claude, via ai-translate) still auto-detects the SOURCE language
-    // from the transcribed text regardless of this setting.
-    const STT_LOCALES: Record<string, string> = {
-      it: "it-IT", en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE",
-      pt: "pt-PT", ar: "ar-SA", zh: "zh-CN", ja: "ja-JP", ko: "ko-KR",
-      ru: "ru-RU", hi: "hi-IN", tr: "tr-TR", nl: "nl-NL", pl: "pl-PL", sv: "sv-SE",
-    };
-    recognition.lang = STT_LOCALES[profile?.preferred_language || "it"] || "it-IT";
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-    recognition.onresult = async (event: any) => {
-      const lastResult = event.results[event.results.length - 1];
-      const spokenText = lastResult?.[0]?.transcript?.trim();
-      if (!spokenText) return;
-
-      if (!lastResult.isFinal) {
-        setMySpeechTranslation(`${spokenText}...`);
-        return;
+    recorder.onstop = async () => {
+      if (!liveTranslationActiveRef.current) return;
+      const blob = new Blob(chunks, { type: mimeType });
+      // Skip near-silent chunks (nobody spoke in this window)
+      if (blob.size > 3000) {
+        void processAudioChunk(blob, mimeType);
       }
-
-      if (isProcessingRef.current || spokenText.length < 2) return;
-      isProcessingRef.current = true;
-      setCallTranslating(true);
-
-      try {
-        const { data, error } = await supabase.functions.invoke("elevenlabs-translate-speak", {
-          body: { spokenText, targetLanguage: callTargetLang },
-        });
-
-        if (error) throw error;
-
-        const translated = data?.translatedText || spokenText;
-        setMySpeechTranslation(translated);
-
-        // Send the translated text + voice to the OTHER person in the
-        // call, via the same signaling channel already used for WebRTC —
-        // this is what makes it useful for two real people speaking
-        // different languages, instead of only translating for yourself.
-        if (peerId) {
-          void sendSignal("translation", peerId, {
-            text: translated,
-            audio: data?.audioAvailable ? data?.audioBase64 : null,
-          }, activeKind).catch(() => {});
-        }
-      } catch {
-        setMySpeechTranslation(spokenText);
-      } finally {
-        setCallTranslating(false);
-        isProcessingRef.current = false;
-      }
+      // Keep listening continuously while the feature is on.
+      recordNextChunk();
     };
 
-    recognition.onerror = () => {
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+    setTimeout(() => { try { recorder.stop(); } catch { /* already stopped */ } }, 4000);
+  };
+
+  const processAudioChunk = async (blob: Blob, mimeType: string) => {
+    if (isProcessingRef.current) return; // don't overlap translations
+    isProcessingRef.current = true;
+    setCallTranslating(true);
+    try {
+      const reader = new FileReader();
+      const audioBase64: string = await new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(String(reader.result).split(",")[1] || "");
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+
+      const { data: sttData, error: sttError } = await supabase.functions.invoke("voice-transcribe", {
+        body: { audioBase64, mimeType },
+      });
+      if (sttError) throw sttError;
+
+      const spokenText: string = (sttData?.transcript || "").trim();
+      if (spokenText.length < 2) return; // silence / noise, nothing was said
+
+      const { data, error } = await supabase.functions.invoke("elevenlabs-translate-speak", {
+        body: { spokenText, targetLanguage: callTargetLang },
+      });
+      if (error) throw error;
+
+      const translated = data?.translatedText || spokenText;
+      setMySpeechTranslation(translated);
+
+      // Send the translated text + voice to the OTHER person in the
+      // call, via the same signaling channel already used for WebRTC —
+      // this is what makes it useful for two real people speaking
+      // different languages, instead of only translating for yourself.
+      if (peerId) {
+        void sendSignal("translation", peerId, {
+          text: translated,
+          audio: data?.audioAvailable ? data?.audioBase64 : null,
+        }, activeKind).catch(() => {});
+      }
+    } catch {
+      /* best-effort: skip this chunk, keep listening */
+    } finally {
       setCallTranslating(false);
       isProcessingRef.current = false;
-    };
+    }
+  };
 
-    recognition.start();
-    speechRecRef.current = recognition;
-    toast.success("Traduzione vocale realtime attiva");
+  const startLiveTranslation = () => {
+    if (!localStream) {
+      toast.error("Microfono non disponibile");
+      return;
+    }
+    liveTranslationActiveRef.current = true;
+    setLiveTranslationOn(true);
+    recordNextChunk();
+    toast.success("Traduzione vocale realtime attiva — rileva automaticamente la lingua parlata");
   };
 
   if (status === "ringing-in" && incoming) {
@@ -424,7 +437,7 @@ export default function CallManager() {
 
           <Button
             size="lg"
-            variant={speechRecRef.current ? "default" : "secondary"}
+            variant={liveTranslationOn ? "default" : "secondary"}
             className="rounded-full w-14 h-14 p-0"
             onClick={() => {
               if (!isPremium) {
@@ -433,11 +446,11 @@ export default function CallManager() {
                 });
                 return;
               }
-              if (speechRecRef.current) stopLiveTranslation();
+              if (liveTranslationOn) stopLiveTranslation();
               else startLiveTranslation();
             }}
           >
-            {!isPremium ? <Crown className="w-6 h-6 text-yellow-500" /> : speechRecRef.current ? <Volume2 className="w-6 h-6" /> : <Globe2 className="w-6 h-6" />}
+            {!isPremium ? <Crown className="w-6 h-6 text-yellow-500" /> : liveTranslationOn ? <Volume2 className="w-6 h-6" /> : <Globe2 className="w-6 h-6" />}
           </Button>
 
           <Button size="lg" variant="destructive" className="rounded-full w-14 h-14 p-0" onClick={() => endCall(true)}>
