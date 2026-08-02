@@ -4,9 +4,15 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/supabase/vite";
 
-const FALLBACK_SUPABASE_URL = "https://dtrjyqlqvtoyiipvnwqv.supabase.co";
-const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0cmp5cWxxdnRveWlpcHZud3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NjExMzQsImV4cCI6MjA4ODUzNzEzNH0.XBr7-gbzDGaMxVgsPBLiXJPFJl1yr_tZR2KJjHoq-Wg";
-const FALLBACK_SUPABASE_PROJECT_ID = "dtrjyqlqvtoyiipvnwqv";
+// These fallbacks previously pointed at the OLD, now-dead Supabase project
+// (dtrjyqlqvtoyiipvnwqv) — meaning if the real env vars were ever missing
+// or out of scope during a Vercel build, the app would silently connect to
+// a database that no longer belongs to this account. Updated to the
+// current project so a missing-env-var build fails safely into a *live*
+// database instead of a dead one.
+const FALLBACK_SUPABASE_URL = "https://vmadeboxypvvebkbhzak.supabase.co";
+const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_xr25xfxrF9FO_Vy_0dN3ng_pE2LH98j";
+const FALLBACK_SUPABASE_PROJECT_ID = "vmadeboxypvvebkbhzak";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
