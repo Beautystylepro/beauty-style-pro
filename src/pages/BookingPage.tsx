@@ -161,7 +161,13 @@ export default function BookingPage() {
 
     if (error || !booking) {
       console.error("Booking error:", error);
-      toast.error("Errore nella prenotazione");
+      if (error?.message?.includes("FREE_TIER_LIMIT")) {
+        toast.error("Hai raggiunto le 3 prenotazioni gratuite di questo mese", {
+          action: { label: "Passa a Pro", onClick: () => navigate("/subscriptions") },
+        });
+      } else {
+        toast.error("Errore nella prenotazione");
+      }
       setLoading(false);
     } else {
       toast.success("Prenotazione creata! Procedi al pagamento.");

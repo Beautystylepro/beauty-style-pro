@@ -39,10 +39,26 @@ export default function StylistsPage() {
       .select("id, user_id, business_name, specialty, city, rating, review_count, hourly_rate, latitude, longitude, profiles:user_id(avatar_url)")
       .order("rating", { ascending: false });
     if (data) {
-      setStylists(data.map((p: any) => ({
-        ...p,
-        avatar: (Array.isArray(p.profiles) ? p.profiles[0]?.avatar_url : p.profiles?.avatar_url) || null,
-      })));
+      // Chi ha un abbonamento attivo (Pro/Business/Premium) sale in cima
+      // ai risultati — è un vantaggio reale promesso in pagina abbonamenti,
+      // prima non veniva mai applicato qui.
+      const userIds = data.map((p: any) => p.user_id).filter(Boolean);
+      const { data: activeSubs } = userIds.length
+        ? await supabase.from("user_subscriptions").select("user_id").eq("status", "active").in("user_id", userIds)
+        : { data: [] as { user_id: string }[] };
+      const subscriberIds = new Set((activeSubs || []).map((s) => s.user_id));
+
+      const withPriority = data
+        .map((p: any) => ({
+          ...p,
+          avatar: (Array.isArray(p.profiles) ? p.profiles[0]?.avatar_url : p.profiles?.avatar_url) || null,
+          isPrioritySubscriber: subscriberIds.has(p.user_id),
+        }))
+        .sort((a: any, b: any) => {
+          if (a.isPrioritySubscriber !== b.isPrioritySubscriber) return a.isPrioritySubscriber ? -1 : 1;
+          return (b.rating || 0) - (a.rating || 0);
+        });
+      setStylists(withPriority);
     }
     setLoading(false);
   };
