@@ -10,7 +10,8 @@ import { useNavigate } from "react-router-dom";
 
 export default function CallManager() {
   const {
-    status, incoming, localStream, remoteStream, activeKind, peerName,
+    status, incoming, localStream, remoteStream, activeKind, peerName, peerId,
+    incomingTranslation, sendSignal,
     acceptCall, rejectCall, endCall, toggleMic, toggleCamera,
     stellaAnswering, dismissStellaAnswering,
   } = useCall();
@@ -122,11 +123,46 @@ export default function CallManager() {
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [callTranslation, setCallTranslation] = useState("");
+  // What I just said, and its translation — shown to me as confirmation
+  // that it was actually sent to the other person.
+  const [mySpeechTranslation, setMySpeechTranslation] = useState("");
   const [callTranslating, setCallTranslating] = useState(false);
   const [callTargetLang, setCallTargetLang] = useState(
     typeof navigator !== "undefined" ? navigator.language.slice(0, 2) : "it",
   );
+  const [manualLangOverride, setManualLangOverride] = useState(false);
+  // What the OTHER person said, already translated into MY language —
+  // this is the subtitle + audio that actually reaches me during the call.
+  const [peerTranslationText, setPeerTranslationText] = useState("");
+  const lastPlayedTranslationTs = useRef(0);
+
+  // Auto-detect which language to translate INTO: the peer's own
+  // preferred language (set at their registration), not a language the
+  // local user has to pick manually — "riconoscimento automatico in base
+  // a chi parla". A manual override remains available for edge cases.
+  useEffect(() => {
+    if (!peerId || manualLangOverride) return;
+    (async () => {
+      const { data } = await supabase.from("profiles").select("preferred_language").eq("user_id", peerId).maybeSingle();
+      if (data?.preferred_language) setCallTargetLang(data.preferred_language);
+    })();
+  }, [peerId, manualLangOverride]);
+
+  // Play + show whatever the peer's device just sent us via the call
+  // signaling channel (their speech, already translated into my language).
+  useEffect(() => {
+    if (!incomingTranslation || incomingTranslation.ts === lastPlayedTranslationTs.current) return;
+    lastPlayedTranslationTs.current = incomingTranslation.ts;
+    setPeerTranslationText(incomingTranslation.text);
+    if (incomingTranslation.audioBase64) {
+      try {
+        translationAudioRef.current?.pause();
+        const audio = new Audio(`data:audio/mpeg;base64,${incomingTranslation.audioBase64}`);
+        translationAudioRef.current = audio;
+        void audio.play().catch(() => {});
+      } catch { /* best-effort, ignore */ }
+    }
+  }, [incomingTranslation]);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -157,7 +193,8 @@ export default function CallManager() {
       translationAudioRef.current.pause();
       translationAudioRef.current = null;
     }
-    setCallTranslation("");
+    setMySpeechTranslation("");
+    setPeerTranslationText("");
     setCallTranslating(false);
   };
 
@@ -166,15 +203,6 @@ export default function CallManager() {
       stopLiveTranslation();
     }
   }, [status]);
-
-  const playTranslationAudio = (audioBase64: string) => {
-    try {
-      translationAudioRef.current?.pause();
-      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
-      translationAudioRef.current = audio;
-      void audio.play().catch(() => {});
-    } catch { /* best-effort, ignore */ }
-  };
 
   const startLiveTranslation = () => {
     const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -194,7 +222,7 @@ export default function CallManager() {
       if (!spokenText) return;
 
       if (!lastResult.isFinal) {
-        setCallTranslation(`${spokenText}...`);
+        setMySpeechTranslation(`${spokenText}...`);
         return;
       }
 
@@ -209,12 +237,21 @@ export default function CallManager() {
 
         if (error) throw error;
 
-        setCallTranslation(data?.translatedText || spokenText);
-        if (data?.audioAvailable && data?.audioBase64) {
-          playTranslationAudio(data.audioBase64);
+        const translated = data?.translatedText || spokenText;
+        setMySpeechTranslation(translated);
+
+        // Send the translated text + voice to the OTHER person in the
+        // call, via the same signaling channel already used for WebRTC —
+        // this is what makes it useful for two real people speaking
+        // different languages, instead of only translating for yourself.
+        if (peerId) {
+          void sendSignal("translation", peerId, {
+            text: translated,
+            audio: data?.audioAvailable ? data?.audioBase64 : null,
+          }, activeKind).catch(() => {});
         }
       } catch {
-        setCallTranslation(spokenText);
+        setMySpeechTranslation(spokenText);
       } finally {
         setCallTranslating(false);
         isProcessingRef.current = false;
@@ -296,7 +333,8 @@ export default function CallManager() {
             )}
             <select
               value={callTargetLang}
-              onChange={(e) => setCallTargetLang(e.target.value)}
+              onChange={(e) => { setCallTargetLang(e.target.value); setManualLangOverride(true); }}
+              title="Lingua rilevata automaticamente dall'altra persona — cambiala solo se necessario"
               className="bg-black/50 text-white border border-white/15 rounded-full px-3 py-1 text-sm"
             >
               <option value="it">IT</option>
@@ -306,17 +344,35 @@ export default function CallManager() {
               <option value="de">DE</option>
               <option value="pt">PT</option>
               <option value="ar">AR</option>
+              <option value="zh">ZH</option>
+              <option value="ja">JA</option>
+              <option value="ko">KO</option>
+              <option value="ru">RU</option>
+              <option value="hi">HI</option>
+              <option value="tr">TR</option>
+              <option value="nl">NL</option>
+              <option value="pl">PL</option>
+              <option value="sv">SV</option>
             </select>
           </div>
 
-          {callTranslation && (
+          {peerTranslationText && (
             <div className="absolute left-4 right-4 bottom-28 bg-black/65 backdrop-blur rounded-2xl px-4 py-3 text-white border border-white/10">
               <div className="flex items-center gap-2 text-xs text-white/70 mb-1">
                 <Globe2 className="w-3.5 h-3.5" />
-                Traduzione realtime
-                {callTranslating && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
+                {peerName || "L'altra persona"} ha detto
               </div>
-              <p className="text-sm leading-relaxed">{callTranslation}</p>
+              <p className="text-sm leading-relaxed">{peerTranslationText}</p>
+            </div>
+          )}
+          {mySpeechTranslation && (
+            <div className="absolute left-4 right-4 bottom-14 bg-primary/70 backdrop-blur rounded-2xl px-4 py-2 text-white border border-white/10">
+              <div className="flex items-center gap-2 text-[11px] text-white/80 mb-0.5">
+                <Globe2 className="w-3 h-3" />
+                Tu (tradotto e inviato)
+                {callTranslating && <span className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+              </div>
+              <p className="text-xs leading-relaxed">{mySpeechTranslation}</p>
             </div>
           )}
         </div>

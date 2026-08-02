@@ -39,6 +39,8 @@ export function useWebRTCCall() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [activeKind, setActiveKind] = useState<CallKind>("video");
   const [peerName, setPeerName] = useState<string>("");
+  const [peerId, setPeerId] = useState<string>("");
+  const [incomingTranslation, setIncomingTranslation] = useState<{ text: string; audioBase64: string | null; ts: number } | null>(null);
   const [stellaAnswering, setStellaAnswering] = useState<{
     callId: string;
     peerId: string;
@@ -119,6 +121,7 @@ export function useWebRTCCall() {
     peerIdRef.current = null;
     setIncoming(null);
     setPeerName("");
+    setPeerId("");
     setStatus("idle");
   }, []);
 
@@ -238,6 +241,7 @@ export function useWebRTCCall() {
       kind: (signal.call_kind as CallKind) || "video",
     });
     setPeerName(prof?.display_name || signal.payload?.name || "Sconosciuto");
+    setPeerId(signal.from_user);
     setStatus("ringing-in");
 
     try {
@@ -265,6 +269,7 @@ export function useWebRTCCall() {
       peerIdRef.current = toUser;
       setActiveKind(kind);
       setPeerName(peerDisplayName || "");
+      setPeerId(toUser);
       setStatus("ringing-out");
 
       const stream = await getMedia(kind);
@@ -297,6 +302,7 @@ export function useWebRTCCall() {
       peerIdRef.current = fromUser;
       setActiveKind(kind);
       setPeerName(incoming.fromName || "");
+      setPeerId(fromUser);
       setStatus("connecting");
       stopRingtone();
 
@@ -452,6 +458,15 @@ export function useWebRTCCall() {
           return;
         }
 
+        if (signal.signal_type === "translation") {
+          setIncomingTranslation({
+            text: signal.payload?.text || "",
+            audioBase64: signal.payload?.audio || null,
+            ts: Date.now(),
+          });
+          return;
+        }
+
         if (signal.signal_type === "hangup") {
           toast.info("Chiamata terminata");
           cleanupPeer();
@@ -520,6 +535,9 @@ export function useWebRTCCall() {
     remoteStream,
     activeKind,
     peerName,
+    peerId,
+    incomingTranslation,
+    sendSignal,
     startCall,
     acceptCall,
     rejectCall,
