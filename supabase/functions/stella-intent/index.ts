@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     try { await requireUser(req); } catch (r) { if (r instanceof Response) return r; throw r; }
     const { text, context } = await req.json();
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!apiKey) {
       return new Response(JSON.stringify({ intent: "chat", response: "Stella AI non è disponibile al momento." }), {
@@ -97,69 +97,66 @@ IMPORTANT RULES:
 - NEVER invent an action if the command is unclear — use "unknown" and ask the user to repeat. Do NOT give random or made-up answers.`;
 
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "claude-sonnet-5",
+        max_tokens: 500,
+        temperature: 0.3,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: text },
         ],
         tools: [
           {
-            type: "function",
-            function: {
-              name: "execute_action",
-              description: "Execute an app action based on the user's voice command",
-              parameters: {
-                type: "object",
-                properties: {
-                  intent: {
-                    type: "string",
-                    enum: ["navigate", "search", "show_profile", "like", "comment", "follow", "unfollow", "send_message", "create_post", "book", "confirm_booking", "cancel_booking", "call", "scroll", "theme", "share", "refresh", "back", "info", "reminder", "suggest", "find_nearby", "chat", "unknown"],
-                  },
-                  params: {
-                    type: "object",
-                    description: "Action parameters. For 'navigate' include 'route'. For 'search' include 'query'. For 'comment' include 'comment_text' and optionally 'target_name'. For 'create_post' include 'content'. For 'follow'/'unfollow' include 'target_name'. For 'send_message' include 'recipient' and optionally 'content'. For 'scroll' include 'direction'. For 'theme' include 'mode'. For 'suggest' include 'suggestion_type'.",
-                    properties: {
-                      route: { type: "string", description: "App route path for navigate intent" },
-                      query: { type: "string" },
-                      target_name: { type: "string" },
-                      name: { type: "string" },
-                      recipient: { type: "string" },
-                      content: { type: "string", description: "Message content or post content" },
-                      comment_text: { type: "string", description: "Comment text for comment intent" },
-                      direction: { type: "string", enum: ["up", "down", "top", "bottom"] },
-                      mode: { type: "string", enum: ["dark", "light"] },
-                      info_type: { type: "string", enum: ["coins", "bookings", "general"] },
-                      description: { type: "string" },
-                      city: { type: "string", description: "City name for find_nearby intent" },
-                      specialty: { type: "string", description: "Specialty filter for find_nearby (e.g. hairstylist, colorist, barber)" },
-                      suggestion_type: { type: "string", enum: ["beauty", "social", "business", "fun"] },
-                    },
-                  },
-                  response: {
-                    type: "string",
-                    description: "Friendly response to the user in their language",
-                  },
-                  detected_language: {
-                    type: "string",
-                    description: "ISO language code detected (e.g. it, en, fr, es, de, pt, ar, zh, ja, ko, hi, ru)",
+            name: "execute_action",
+            description: "Execute an app action based on the user's voice command",
+            input_schema: {
+              type: "object",
+              properties: {
+                intent: {
+                  type: "string",
+                  enum: ["navigate", "search", "show_profile", "like", "comment", "follow", "unfollow", "send_message", "create_post", "book", "confirm_booking", "cancel_booking", "call", "scroll", "theme", "share", "refresh", "back", "info", "reminder", "suggest", "find_nearby", "chat", "unknown"],
+                },
+                params: {
+                  type: "object",
+                  description: "Action parameters. For 'navigate' include 'route'. For 'search' include 'query'. For 'comment' include 'comment_text' and optionally 'target_name'. For 'create_post' include 'content'. For 'follow'/'unfollow' include 'target_name'. For 'send_message' include 'recipient' and optionally 'content'. For 'scroll' include 'direction'. For 'theme' include 'mode'. For 'suggest' include 'suggestion_type'.",
+                  properties: {
+                    route: { type: "string", description: "App route path for navigate intent" },
+                    query: { type: "string" },
+                    target_name: { type: "string" },
+                    name: { type: "string" },
+                    recipient: { type: "string" },
+                    content: { type: "string", description: "Message content or post content" },
+                    comment_text: { type: "string", description: "Comment text for comment intent" },
+                    direction: { type: "string", enum: ["up", "down", "top", "bottom"] },
+                    mode: { type: "string", enum: ["dark", "light"] },
+                    info_type: { type: "string", enum: ["coins", "bookings", "general"] },
+                    description: { type: "string" },
+                    city: { type: "string", description: "City name for find_nearby intent" },
+                    specialty: { type: "string", description: "Specialty filter for find_nearby (e.g. hairstylist, colorist, barber)" },
+                    suggestion_type: { type: "string", enum: ["beauty", "social", "business", "fun"] },
                   },
                 },
-                required: ["intent", "response", "detected_language"],
-                additionalProperties: false,
+                response: {
+                  type: "string",
+                  description: "Friendly response to the user in their language",
+                },
+                detected_language: {
+                  type: "string",
+                  description: "ISO language code detected (e.g. it, en, fr, es, de, pt, ar, zh, ja, ko, hi, ru)",
+                },
               },
+              required: ["intent", "response", "detected_language"],
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: "execute_action" } },
-        temperature: 0.3,
-        max_tokens: 500,
+        tool_choice: { type: "tool", name: "execute_action" },
       }),
     });
 
@@ -172,17 +169,17 @@ IMPORTANT RULES:
     }
 
     const result = await response.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+    const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
 
-    if (toolCall?.function?.arguments) {
-      const parsed = JSON.parse(toolCall.function.arguments);
-      return new Response(JSON.stringify(parsed), {
+    if (toolUse) {
+      return new Response(JSON.stringify(toolUse.input), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fallback to content if no tool call
-    const content = result.choices?.[0]?.message?.content || "I'm here to help!";
+    // Fallback to text content if no tool call
+    const textBlock = result.content?.find((b: { type: string }) => b.type === "text");
+    const content = textBlock?.text || "I'm here to help!";
     return new Response(JSON.stringify({ intent: "chat", response: content, detected_language: "en" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

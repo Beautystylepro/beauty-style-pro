@@ -12,16 +12,15 @@ serve(async (req) => {
   try {
     try { await requireUser(req); } catch (r) { if (r instanceof Response) return r; throw r; }
     const { audioUrl, audioBase64, mimeType, targetLanguage } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
-    let audioBytes: Uint8Array;
+    let audioB64: string;
     let contentType = mimeType || "audio/webm";
 
     if (audioBase64) {
-      const bin = atob(audioBase64);
-      audioBytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) audioBytes[i] = bin.charCodeAt(i);
+      audioB64 = audioBase64;
     } else if (audioUrl) {
       // Validate URL against allow-list to prevent SSRF
       let parsed: URL;
@@ -41,27 +40,32 @@ serve(async (req) => {
       const r = await fetch(parsed.toString());
       if (!r.ok) throw new Error("Cannot fetch audio");
       contentType = r.headers.get("content-type") || contentType;
-      audioBytes = new Uint8Array(await r.arrayBuffer());
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      audioB64 = btoa(String.fromCharCode(...bytes));
     } else {
       return new Response(JSON.stringify({ error: "audioUrl or audioBase64 required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const ext = contentType.includes("mp4") ? "mp4"
-      : contentType.includes("mpeg") ? "mp3"
-      : contentType.includes("wav") ? "wav"
-      : "webm";
-
-    const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
-    form.append("file", new Blob([audioBytes], { type: contentType }), `audio.${ext}`);
-
-    const sttResp = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
-      body: form,
-    });
+    // Transcribe using Gemini's native audio understanding (Claude has no
+    // audio input support, so this step always uses Gemini regardless of
+    // which provider handles the rest of the app's text/reasoning tasks).
+    const sttResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: "Transcribe this audio verbatim. Return ONLY the transcribed text, nothing else — no commentary, no quotes." },
+              { inline_data: { mime_type: contentType, data: audioB64 } },
+            ],
+          }],
+        }),
+      }
+    );
 
     if (!sttResp.ok) {
       const t = await sttResp.text();
@@ -72,30 +76,33 @@ serve(async (req) => {
     }
 
     const sttData = await sttResp.json();
-    const transcript: string = sttData.text || "";
+    const transcript: string = sttData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
     let translated = transcript;
-    if (targetLanguage && transcript.trim().length > 0) {
+    if (targetLanguage && transcript.trim().length > 0 && ANTHROPIC_API_KEY) {
       const langMap: Record<string, string> = {
         it: "Italian", en: "English", es: "Spanish", fr: "French",
         de: "German", pt: "Portuguese", ar: "Arabic", zh: "Chinese",
         ja: "Japanese", ko: "Korean", ru: "Russian",
       };
       const targetName = langMap[targetLanguage] || targetLanguage;
-      const trResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const trResp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
-          messages: [
-            { role: "system", content: `Translate to ${targetName}. Return ONLY the translation. If already in ${targetName}, return as-is.` },
-            { role: "user", content: transcript },
-          ],
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 500,
+          system: `Translate to ${targetName}. Return ONLY the translation. If already in ${targetName}, return as-is.`,
+          messages: [{ role: "user", content: transcript }],
         }),
       });
       if (trResp.ok) {
         const trData = await trResp.json();
-        translated = trData.choices?.[0]?.message?.content?.trim() || transcript;
+        translated = trData.content?.[0]?.text?.trim() || transcript;
       }
     }
 

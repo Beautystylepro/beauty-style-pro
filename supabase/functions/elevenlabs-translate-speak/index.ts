@@ -20,13 +20,13 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
     if (!ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY not configured");
 
-    // Step 1: Translate with Lovable AI
+    // Step 1: Translate with Claude
     const langMap: Record<string, string> = {
       it: "Italian", en: "English", es: "Spanish", fr: "French",
       de: "German", pt: "Portuguese", ar: "Arabic", zh: "Chinese",
@@ -35,19 +35,18 @@ serve(async (req) => {
     };
     const targetLangName = langMap[targetLanguage] || targetLanguage || "English";
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 500,
+        system: `You are a real-time interpreter. Translate the following spoken text to ${targetLangName}. Return ONLY the translated text, nothing else. Keep it natural and conversational.`,
         messages: [
-          {
-            role: "system",
-            content: `You are a real-time interpreter. Translate the following spoken text to ${targetLangName}. Return ONLY the translated text, nothing else. Keep it natural and conversational.`,
-          },
           { role: "user", content: spokenText },
         ],
       }),
@@ -55,14 +54,14 @@ serve(async (req) => {
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error("AI translation error:", aiResponse.status, errText);
+      console.error("Anthropic translation error:", aiResponse.status, errText);
       
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResponse.status === 402) {
+      if (aiResponse.status === 402 || aiResponse.status === 401) {
         return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -71,7 +70,7 @@ serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const translatedText = aiData.choices?.[0]?.message?.content?.trim() || spokenText;
+    const translatedText = aiData.content?.[0]?.text?.trim() || spokenText;
 
     // Step 2: Convert translated text to speech with ElevenLabs
     const voiceId = "EXAVITQu4vr4xnSDxMaL"; // Sarah - natural female voice

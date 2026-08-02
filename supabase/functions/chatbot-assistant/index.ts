@@ -182,7 +182,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
@@ -222,7 +222,7 @@ serve(async (req) => {
       });
 
       if (!suggestions || suggestions.length === 0) {
-        if (!LOVABLE_API_KEY) {
+        if (!ANTHROPIC_API_KEY) {
           return jsonResponse({ 
             suggestions: [{
               suggestion_id: crypto.randomUUID(),
@@ -250,67 +250,61 @@ serve(async (req) => {
         const isBusiness = userType === 'professional' || userType === 'business';
         const profileComplete = !!(profile?.bio && profile?.avatar_url);
 
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            messages: [
-              {
-                role: "system",
-                content: `Sei Stella AI di Style Beauty. Genera 2 suggerimenti personalizzati per ${isBusiness ? 'professionisti/business' : 'clienti/utenti'}.
+            model: "claude-sonnet-5",
+            max_tokens: 500,
+            system: `Sei Stella AI di Style Beauty. Genera 2 suggerimenti personalizzati per ${isBusiness ? 'professionisti/business' : 'clienti/utenti'}.
 Profilo: Tipo=${userType}, Posts=${postsRes.count || 0}, Booking=${bookingsRes.count || 0}, QRC=${profile?.qr_coins || 0}, Città=${profile?.city || '?'}, ProfiloCompleto=${profileComplete}, Abbonamento=${subsRes.data ? 'Attivo' : 'Free'}
 Regole: max 50 char per suggerimento, emoji, tono motivante, incentiva azioni specifiche.
-${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidature' : 'Focus: scoperta servizi, prenotazioni, shop, live, gamification, referral'}`
-              },
+${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidature' : 'Focus: scoperta servizi, prenotazioni, shop, live, gamification, referral'}`,
+            messages: [
               { role: "user", content: "Genera 2 suggerimenti personalizzati" },
             ],
             tools: [{
-              type: "function",
-              function: {
-                name: "create_suggestions",
-                description: "Create personalized suggestions",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    suggestions: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          content: { type: "string" },
-                          action: { type: "string", enum: [
-                            "create-post", "go-live", "stylists", "wallet", "subscriptions",
-                            "shop", "map-search", "hr", "challenges", "missions", "spin-wheel",
-                            "analytics", "boost-profile", "events", "leaderboard", "referral",
-                            "edit-profile", "create-job-post", "my-bookings", "before-after",
-                            "explore", "shorts", "radio", "chat", "verify-account"
-                          ]},
-                          action_text: { type: "string" }
-                        },
-                        required: ["content", "action", "action_text"],
-                        additionalProperties: false
-                      }
+              name: "create_suggestions",
+              description: "Create personalized suggestions",
+              input_schema: {
+                type: "object",
+                properties: {
+                  suggestions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        content: { type: "string" },
+                        action: { type: "string", enum: [
+                          "create-post", "go-live", "stylists", "wallet", "subscriptions",
+                          "shop", "map-search", "hr", "challenges", "missions", "spin-wheel",
+                          "analytics", "boost-profile", "events", "leaderboard", "referral",
+                          "edit-profile", "create-job-post", "my-bookings", "before-after",
+                          "explore", "shorts", "radio", "chat", "verify-account"
+                        ]},
+                        action_text: { type: "string" }
+                      },
+                      required: ["content", "action", "action_text"]
                     }
-                  },
-                  required: ["suggestions"],
-                  additionalProperties: false
-                }
+                  }
+                },
+                required: ["suggestions"]
               }
             }],
-            tool_choice: { type: "function", function: { name: "create_suggestions" } }
+            tool_choice: { type: "tool", name: "create_suggestions" }
           }),
         });
 
         if (aiResponse.ok) {
           const result = await aiResponse.json();
-          const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall) {
-            const args = JSON.parse(toolCall.function.arguments);
-            const mappedSuggestions = (args.suggestions || []).map((s: any) => ({
+          const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+          if (toolUse) {
+            const args = toolUse.input as { suggestions: Array<{ content: string; action: string; action_text: string }> };
+            const mappedSuggestions = (args.suggestions || []).map((s) => ({
               suggestion_id: crypto.randomUUID(),
               message_type: "ai_suggestion",
               content: s.content,
@@ -359,52 +353,50 @@ ${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidat
     if (action === "job_match") {
       const { job_id, applicant_id } = reqData || {};
       
-      if (!LOVABLE_API_KEY) return jsonResponse({ match_score: 50, analysis: "AI non disponibile" });
+      if (!ANTHROPIC_API_KEY) return jsonResponse({ match_score: 50, analysis: "AI non disponibile" });
 
       const [jobRes, profileRes] = await Promise.all([
         job_id ? supabase.from("job_posts").select("*").eq("id", job_id).maybeSingle() : Promise.resolve({ data: null }),
         applicant_id ? supabase.from("profiles").select("*").eq("user_id", applicant_id).maybeSingle() : Promise.resolve({ data: null }),
       ]);
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 800,
+          system: "Analizza la compatibilità tra candidato e offerta lavoro beauty. Rispondi con tool call.",
           messages: [
-            { role: "system", content: "Analizza la compatibilità tra candidato e offerta lavoro beauty. Rispondi con tool call." },
             { role: "user", content: `Offerta: ${JSON.stringify(jobRes.data)}\nCandidato: ${JSON.stringify(profileRes.data)}` },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "job_analysis",
-              description: "Return job match analysis",
-              parameters: {
-                type: "object",
-                properties: {
-                  match_score: { type: "number", description: "0-100 score" },
-                  strengths: { type: "array", items: { type: "string" } },
-                  gaps: { type: "array", items: { type: "string" } },
-                  recommendation: { type: "string" }
-                },
-                required: ["match_score", "strengths", "gaps", "recommendation"],
-                additionalProperties: false,
-              }
+            name: "job_analysis",
+            description: "Return job match analysis",
+            input_schema: {
+              type: "object",
+              properties: {
+                match_score: { type: "number", description: "0-100 score" },
+                strengths: { type: "array", items: { type: "string" } },
+                gaps: { type: "array", items: { type: "string" } },
+                recommendation: { type: "string" }
+              },
+              required: ["match_score", "strengths", "gaps", "recommendation"]
             }
           }],
-          tool_choice: { type: "function", function: { name: "job_analysis" } }
+          tool_choice: { type: "tool", name: "job_analysis" }
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          return jsonResponse(JSON.parse(toolCall.function.arguments));
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) {
+          return jsonResponse(toolUse.input);
         }
       }
       return jsonResponse({ match_score: 50, strengths: [], gaps: [], recommendation: "Analisi non disponibile" });
@@ -412,7 +404,7 @@ ${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidat
 
     // ===== ACTION: AI service recommendations =====
     if (action === "recommend_services") {
-      if (!LOVABLE_API_KEY) return jsonResponse({ recommendations: [] });
+      if (!ANTHROPIC_API_KEY) return jsonResponse({ recommendations: [] });
 
       const { data: profile } = await supabase.from("profiles").select("*").eq("user_id", user_id).maybeSingle();
       const { data: pastBookings } = await supabase
@@ -427,54 +419,51 @@ ${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidat
         .eq("active", true)
         .limit(20);
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 800,
+          system: "Suggerisci servizi beauty personalizzati basandoti sullo storico prenotazioni.",
           messages: [
-            { role: "system", content: "Suggerisci servizi beauty personalizzati basandoti sullo storico prenotazioni." },
             { role: "user", content: `Profilo: ${profile?.city || '?'}, Tipo: ${profile?.user_type}\nStorico: ${JSON.stringify(pastBookings)}\nServizi disponibili: ${JSON.stringify(services)}` },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "recommend",
-              description: "Return service recommendations",
-              parameters: {
-                type: "object",
-                properties: {
-                  recommendations: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        service_id: { type: "string" },
-                        reason: { type: "string" },
-                        priority: { type: "number" }
-                      },
-                      required: ["service_id", "reason", "priority"],
-                      additionalProperties: false
-                    }
+            name: "recommend",
+            description: "Return service recommendations",
+            input_schema: {
+              type: "object",
+              properties: {
+                recommendations: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      service_id: { type: "string" },
+                      reason: { type: "string" },
+                      priority: { type: "number" }
+                    },
+                    required: ["service_id", "reason", "priority"]
                   }
-                },
-                required: ["recommendations"],
-                additionalProperties: false
-              }
+                }
+              },
+              required: ["recommendations"]
             }
           }],
-          tool_choice: { type: "function", function: { name: "recommend" } }
+          tool_choice: { type: "tool", name: "recommend" }
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          return jsonResponse(JSON.parse(toolCall.function.arguments));
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) {
+          return jsonResponse(toolUse.input);
         }
       }
       return jsonResponse({ recommendations: [] });
@@ -484,7 +473,7 @@ ${isBusiness ? 'Focus: visibilità, prenotazioni, marketing, analytics, candidat
     if (action === "chat") {
       const { messages: chatHistory, stream: enableStreaming, message } = reqData;
       
-      if (!LOVABLE_API_KEY) {
+      if (!ANTHROPIC_API_KEY) {
         return jsonResponse({ 
           response: "Mi dispiace, il servizio AI non è disponibile al momento. Riprova più tardi!" 
         });
@@ -548,24 +537,32 @@ CONTESTO UTENTE ATTUALE:
         finalHistory = [{ role: "user", content: message }];
       }
 
-      const allMessages = [
-        { role: "system", content: dynamicPrompt + contextAddition },
-        ...(finalHistory || [])
-      ];
+      const claudeMessages = (finalHistory || []).map((m: { role: string; content: string }) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      }));
 
       // ── STREAMING MODE ──
+      // Claude's native SSE event shape differs from the OpenAI-compatible
+      // shape the frontend (src/lib/streamChat.ts) already parses
+      // (`data: {"choices":[{"delta":{"content":"..."}}]}`). Rather than
+      // touching every consumer, we transform Claude's stream into that
+      // exact shape here, so streaming stays real-time and the UI keeps
+      // its live token-by-token typing effect.
       if (enableStreaming) {
-        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            messages: allMessages,
-            temperature: 0.7,
+            model: "claude-sonnet-5",
             max_tokens: 1000,
+            temperature: 0.7,
+            system: dynamicPrompt + contextAddition,
+            messages: claudeMessages,
             stream: true,
           }),
         });
@@ -574,46 +571,103 @@ CONTESTO UTENTE ATTUALE:
           if (response.status === 429) {
             return jsonResponse({ error: "Troppe richieste, riprova tra poco" }, 429);
           }
-          if (response.status === 402) {
+          if (response.status === 402 || response.status === 401) {
             return jsonResponse({ error: "Crediti AI esauriti" }, 402);
           }
           const errText = await response.text();
-          console.error("AI gateway streaming error:", response.status, errText);
+          console.error("Anthropic streaming error:", response.status, errText);
           return jsonResponse({ error: "Errore AI gateway" }, 500);
         }
 
-        return new Response(response.body, {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        let fullReply = "";
+
+        const transformed = new ReadableStream({
+          async start(controller) {
+            const reader = response.body!.getReader();
+            let buffer = "";
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                let idx: number;
+                while ((idx = buffer.indexOf("\n\n")) !== -1) {
+                  const rawEvent = buffer.slice(0, idx);
+                  buffer = buffer.slice(idx + 2);
+
+                  const dataLine = rawEvent.split("\n").find(l => l.startsWith("data:"));
+                  if (!dataLine) continue;
+                  const jsonStr = dataLine.slice(5).trim();
+                  if (!jsonStr) continue;
+
+                  try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+                      const text = evt.delta.text as string;
+                      fullReply += text;
+                      const chunk = `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`;
+                      controller.enqueue(encoder.encode(chunk));
+                    }
+                    if (evt.type === "message_stop") {
+                      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                    }
+                  } catch { /* ignore malformed SSE fragment, wait for more data */ }
+                }
+              }
+            } finally {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+              if (fullReply) {
+                const userLastMsg = claudeMessages.slice(-1)[0]?.content || '';
+                supabase.from("chatbot_messages").insert({
+                  user_id,
+                  message_type: "chat",
+                  content: `User: ${userLastMsg}\nBot: ${fullReply}`,
+                  status: "completed"
+                }).then(() => {});
+              }
+            }
+          },
+        });
+
+        return new Response(transformed, {
           headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
         });
       }
 
       // ── NON-STREAMING MODE ──
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: allMessages,
-          temperature: 0.7,
+          model: "claude-sonnet-5",
           max_tokens: 1000,
+          temperature: 0.7,
+          system: dynamicPrompt + contextAddition,
+          messages: claudeMessages,
         }),
       });
 
       if (!response.ok) {
         if (response.status === 429) return jsonResponse({ error: "Troppe richieste" }, 429);
-        if (response.status === 402) return jsonResponse({ error: "Crediti AI esauriti" }, 402);
+        if (response.status === 402 || response.status === 401) return jsonResponse({ error: "Crediti AI esauriti" }, 402);
+        console.error("Anthropic API error:", response.status, await response.text());
         return jsonResponse({ response: "Mi dispiace, c'è stato un problema. Riprova! 🙏" });
       }
 
       const result = await response.json();
-      const aiResponseText = result.choices?.[0]?.message?.content || 
+      const aiResponseText = result.content?.[0]?.text || 
         "Mi dispiace, non riesco a rispondere in questo momento.";
 
       // Log conversation
-      const userLastMsg = (finalHistory || []).slice(-1)[0]?.content || '';
+      const userLastMsg = claudeMessages.slice(-1)[0]?.content || '';
       await supabase.from("chatbot_messages").insert({
         user_id,
         message_type: "chat",
@@ -650,7 +704,7 @@ CONTESTO UTENTE ATTUALE:
       // Filter modules by user role
       const relevantModules = modules.filter((m: any) => m.roles.includes(userType));
 
-      if (!LOVABLE_API_KEY) {
+      if (!ANTHROPIC_API_KEY) {
         // Fallback: return static triggers with variable replacement
         const staticSuggestions = relevantModules.flatMap((mod: any) => {
           const triggers = mod.triggers as any[];
@@ -683,22 +737,21 @@ CONTESTO UTENTE ATTUALE:
         settings: m.ai_settings,
       }));
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            {
-              role: "system",
-              content: `Sei Stella AI di Style. Genera suggerimenti personalizzati basati sui moduli AI configurati.
+          model: "claude-sonnet-5",
+          max_tokens: 800,
+          system: `Sei Stella AI di Style. Genera suggerimenti personalizzati basati sui moduli AI configurati.
 Utente: ${userName}, Tipo: ${userType}, Città: ${profile?.city || "?"}, QRC: ${profile?.qr_coins || 0}
 ${triggerContext ? `Contesto: ${JSON.stringify(triggerContext)}` : ""}
 Regole: max 60 char per messaggio, emoji, tono motivante, CTA chiare. Italiano.`,
-            },
+          messages: [
             {
               role: "user",
               content: `Moduli disponibili: ${JSON.stringify(moduleSummary)}${trigger ? `\nTrigger specifico: ${trigger}` : "\nGenera 1 suggerimento per i top 3 moduli più rilevanti"}`,
@@ -706,44 +759,39 @@ Regole: max 60 char per messaggio, emoji, tono motivante, CTA chiare. Italiano.`
           ],
           tools: [
             {
-              type: "function",
-              function: {
-                name: "generate_module_suggestions",
-                description: "Generate personalized module suggestions",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    suggestions: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          module: { type: "string" },
-                          message: { type: "string" },
-                          cta_text: { type: "string" },
-                          cta_route: { type: "string" },
-                          priority: { type: "number" },
-                        },
-                        required: ["module", "message", "cta_text", "cta_route", "priority"],
-                        additionalProperties: false,
+              name: "generate_module_suggestions",
+              description: "Generate personalized module suggestions",
+              input_schema: {
+                type: "object",
+                properties: {
+                  suggestions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        module: { type: "string" },
+                        message: { type: "string" },
+                        cta_text: { type: "string" },
+                        cta_route: { type: "string" },
+                        priority: { type: "number" },
                       },
+                      required: ["module", "message", "cta_text", "cta_route", "priority"],
                     },
                   },
-                  required: ["suggestions"],
-                  additionalProperties: false,
                 },
+                required: ["suggestions"],
               },
             },
           ],
-          tool_choice: { type: "function", function: { name: "generate_module_suggestions" } },
+          tool_choice: { type: "tool", name: "generate_module_suggestions" },
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          const args = JSON.parse(toolCall.function.arguments);
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) {
+          const args = toolUse.input as any;
           return jsonResponse({ suggestions: args.suggestions || [] });
         }
       }

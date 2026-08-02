@@ -8,7 +8,7 @@ const corsHeaders = {
 // deno-lint-ignore no-explicit-any
 type Any = any;
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
@@ -66,7 +66,7 @@ Rispondi SEMPRE in JSON valido:
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY missing');
+    if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY missing');
 
     const authHeader = req.headers.get('Authorization') || '';
     const jwt = authHeader.replace('Bearer ', '');
@@ -101,37 +101,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Reply via Lovable AI
-    const messages: Any[] = [
-      { role: 'system', content: buildSystemPrompt(ctx, body.language || 'it') },
-    ];
+    // Reply via Claude
+    const systemPrompt = buildSystemPrompt(ctx, body.language || 'it') +
+      '\n\nRispondi SEMPRE con un oggetto JSON valido e nient\'altro, in questo formato esatto: {"reply":"<testo vocale>","action":"continue|booking|message|transfer|end","booking":{"service":"","date":"","time":""}|null,"message_text":""|null}';
+    const messages: Any[] = [];
     for (const t of (body.transcript || [])) {
       messages.push({ role: t.role === 'ai' ? 'assistant' : 'user', content: t.text });
     }
     if (body.userSaid) messages.push({ role: 'user', content: body.userSaid });
 
-    const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-sonnet-5',
+        max_tokens: 500,
+        system: systemPrompt,
         messages,
-        response_format: { type: 'json_object' },
       }),
     });
     if (!aiRes.ok) {
       const errText = await aiRes.text();
       return new Response(JSON.stringify({ reply: 'Mi scuso, ho un problema tecnico. Riprova più tardi.', action: 'end', error: errText }), {
-        status: aiRes.status === 402 || aiRes.status === 429 ? 200 : 500,
+        status: aiRes.status === 402 || aiRes.status === 429 || aiRes.status === 401 ? 200 : 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     const aiJson = await aiRes.json();
     let parsed: Any = { reply: 'Ok', action: 'continue' };
-    try { parsed = JSON.parse(aiJson.choices?.[0]?.message?.content || '{}'); } catch { /* keep default */ }
+    const rawText = aiJson.content?.find((b: { type: string }) => b.type === 'text')?.text || '{}';
+    try {
+      // Claude sometimes wraps JSON in prose or a code fence despite instructions; extract the object.
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+    } catch { /* keep default */ }
 
     // Persist transcript
     const newTranscript = [...(body.transcript || []), ...(body.userSaid ? [{ role: 'caller', text: body.userSaid }] : []), { role: 'ai', text: parsed.reply }];

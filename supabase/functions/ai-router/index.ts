@@ -92,36 +92,32 @@ Indica SEMPRE la distanza e il rating dei professionisti.`,
 };
 
 // ══════════════════════════════════════════════════════════════════════
-// AI PROVIDER — Lovable AI Gateway with fallback
+// AI PROVIDER — Anthropic Claude
 // ══════════════════════════════════════════════════════════════════════
 
 async function callAI(
   apiKey: string,
   systemPrompt: string,
   messages: Array<{ role: string; content: string }>,
-  options: { stream?: boolean; tools?: any[]; tool_choice?: any; max_tokens?: number } = {}
+  options: { max_tokens?: number } = {}
 ) {
-  const body: any = {
-    model: "google/gemini-3-flash-preview",
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...messages,
-    ],
-    temperature: 0.7,
-    max_tokens: options.max_tokens || 1000,
-  };
-
-  if (options.stream) body.stream = true;
-  if (options.tools) body.tools = options.tools;
-  if (options.tool_choice) body.tool_choice = options.tool_choice;
-
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: options.max_tokens || 1000,
+      temperature: 0.7,
+      system: systemPrompt,
+      messages: messages.map(m => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content,
+      })),
+    }),
   });
 
   return response;
@@ -188,8 +184,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
       return jsonResponse({ error: "AI non configurata" }, 500);
     }
 
@@ -206,7 +202,7 @@ serve(async (req) => {
       authenticatedUserId = data?.user?.id ?? null;
     }
 
-    const { role, message, messages, context, stream } = await req.json();
+    const { role, message, messages, context } = await req.json();
 
     // Require valid JWT; never trust client-supplied user_id
     if (!authenticatedUserId) {
@@ -244,32 +240,17 @@ serve(async (req) => {
     // Fallback message when AI is unavailable
     const FALLBACK_REPLY = "Ciao! 👋 Al momento Stella AI è temporaneamente offline per manutenzione. Puoi comunque usare tutte le funzionalità dell'app: prenota su /stylists, esplora lo shop su /shop, gestisci il wallet su /wallet. Tornerò presto! ✨";
 
-    // ── STREAMING ──
-    if (stream) {
-      const response = await callAI(LOVABLE_API_KEY, enrichedPrompt, chatMessages, { stream: true });
-
-      if (!response.ok) {
-        if (response.status === 429) return jsonResponse({ reply: "⏳ Troppe richieste, riprova tra qualche secondo.", role: role || "auto" });
-        if (response.status === 402) return jsonResponse({ reply: FALLBACK_REPLY, role: role || "auto" });
-        return jsonResponse({ reply: FALLBACK_REPLY, role: role || "auto" });
-      }
-
-      return new Response(response.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-      });
-    }
-
-    // ── NON-STREAMING ──
-    const response = await callAI(LOVABLE_API_KEY, enrichedPrompt, chatMessages);
+    const response = await callAI(ANTHROPIC_API_KEY, enrichedPrompt, chatMessages);
 
     if (!response.ok) {
       if (response.status === 429) return jsonResponse({ reply: "⏳ Troppe richieste, riprova tra qualche secondo.", role: role || "auto" });
-      if (response.status === 402) return jsonResponse({ reply: FALLBACK_REPLY, role: role || "auto" });
+      if (response.status === 402 || response.status === 401) return jsonResponse({ reply: FALLBACK_REPLY, role: role || "auto" });
+      console.error("Anthropic API error:", response.status, await response.text());
       return jsonResponse({ reply: FALLBACK_REPLY, role: role || "auto" });
     }
 
     const result = await response.json();
-    const reply = result.choices?.[0]?.message?.content || "Mi dispiace, riprova.";
+    const reply = result.content?.[0]?.text || "Mi dispiace, riprova.";
 
     // Log conversation
     if (user_id) {

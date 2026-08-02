@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
@@ -134,7 +134,7 @@ serve(async (req) => {
     if (action === "message_suggestions") {
       const { recipientName, context } = reqData || {};
 
-      if (!LOVABLE_API_KEY) {
+      if (!ANTHROPIC_API_KEY) {
         return jsonResponse({
           messages: [
             `Ciao${recipientName ? " " + recipientName : ""}, ti ho trovato su Style! Vorrei prenotare un servizio.`,
@@ -145,45 +145,40 @@ serve(async (req) => {
         });
       }
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 500,
+          system: `Genera 4 messaggi brevi e professionali in italiano per l'app beauty Style. Contesto: contattare ${recipientName || "un professionista"} per ${context || "prenotare un servizio"}.`,
           messages: [
-            {
-              role: "system",
-              content: `Genera 4 messaggi brevi e professionali in italiano per l'app beauty Style. Contesto: contattare ${recipientName || "un professionista"} per ${context || "prenotare un servizio"}.`,
-            },
             { role: "user", content: "Genera 4 messaggi suggeriti" },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "return_messages",
-              description: "Return suggested messages",
-              parameters: {
-                type: "object",
-                properties: {
-                  messages: { type: "array", items: { type: "string" } }
-                },
-                required: ["messages"],
-                additionalProperties: false,
+            name: "return_messages",
+            description: "Return suggested messages",
+            input_schema: {
+              type: "object",
+              properties: {
+                messages: { type: "array", items: { type: "string" } }
               },
+              required: ["messages"],
             },
           }],
-          tool_choice: { type: "function", function: { name: "return_messages" } },
+          tool_choice: { type: "tool", name: "return_messages" },
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          return jsonResponse(JSON.parse(toolCall.function.arguments));
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) {
+          return jsonResponse(toolUse.input);
         }
       }
 
@@ -227,7 +222,7 @@ serve(async (req) => {
 
     // ===== ACTION: AI content suggestions for creators =====
     if (action === "content_ideas") {
-      if (!LOVABLE_API_KEY) {
+      if (!ANTHROPIC_API_KEY) {
         return jsonResponse({ ideas: [
           "Pubblica un Prima & Dopo di un tuo lavoro 📸",
           "Condividi un consiglio beauty veloce in un Reel",
@@ -237,41 +232,39 @@ serve(async (req) => {
 
       const { data: profile } = await supabase.from("profiles").select("user_type, city, bio").eq("user_id", user_id).maybeSingle();
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 500,
+          system: "Genera 4 idee di contenuto beauty per professionisti su Style. Brevi, azionabili, in italiano.",
           messages: [
-            { role: "system", content: "Genera 4 idee di contenuto beauty per professionisti su Style. Brevi, azionabili, in italiano." },
             { role: "user", content: `Profilo: ${profile?.user_type}, città: ${profile?.city}, bio: ${profile?.bio || 'nessuna'}` },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "content_ideas",
-              description: "Return content ideas",
-              parameters: {
-                type: "object",
-                properties: {
-                  ideas: { type: "array", items: { type: "string" } }
-                },
-                required: ["ideas"],
-                additionalProperties: false
-              }
+            name: "content_ideas",
+            description: "Return content ideas",
+            input_schema: {
+              type: "object",
+              properties: {
+                ideas: { type: "array", items: { type: "string" } }
+              },
+              required: ["ideas"]
             }
           }],
-          tool_choice: { type: "function", function: { name: "content_ideas" } }
+          tool_choice: { type: "tool", name: "content_ideas" }
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) return jsonResponse(JSON.parse(toolCall.function.arguments));
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) return jsonResponse(toolUse.input);
       }
 
       return jsonResponse({ ideas: ["Pubblica un Prima & Dopo", "Condividi un consiglio beauty", "Vai live!"] });

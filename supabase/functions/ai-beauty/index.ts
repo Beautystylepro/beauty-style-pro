@@ -21,7 +21,7 @@ serve(async (req) => {
   try {
     try { await requireUser(req); } catch (r) { if (r instanceof Response) return r; throw r; }
     const { action, data } = await req.json();
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!apiKey) {
       return jsonResponse({ error: "AI non configurata" }, 500);
@@ -56,31 +56,30 @@ serve(async (req) => {
         return jsonResponse({ error: "Azione non valida" }, 400);
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
+        model: "claude-sonnet-5",
         max_tokens: 1000,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
       }),
     });
 
     if (!response.ok) {
       if (response.status === 429) return jsonResponse({ error: "Troppe richieste, riprova tra poco" }, 429);
-      console.error("ai-beauty AI gateway error:", response.status);
+      console.error("ai-beauty Anthropic API error:", response.status, await response.text());
       return jsonResponse({ error: "Servizio AI non disponibile" }, 502);
     }
 
     const result = await response.json();
-    const content = result.choices?.[0]?.message?.content || "";
+    const content = result.content?.[0]?.text || "";
 
     // Try to parse JSON response
     let parsed;

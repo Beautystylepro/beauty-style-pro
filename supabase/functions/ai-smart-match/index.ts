@@ -15,7 +15,7 @@ serve(async (req) => {
     try { const r = await requireUser(req); authedUserId = r.userId; } catch (r) { if (r instanceof Response) return r; throw r; }
     const { action, user_city, user_preferences, user_type, data: reqData } = await req.json();
     const user_id = authedUserId;
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -56,19 +56,18 @@ serve(async (req) => {
         });
       }
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 1500,
+          system: `Sei l'agente AI di matching di STYLE. Analizza professionisti e genera suggerimenti personalizzati per l'utente. Rispondi in italiano.`,
           messages: [
-            {
-              role: "system",
-              content: `Sei l'agente AI di matching di STYLE. Analizza professionisti e genera suggerimenti personalizzati per l'utente. Rispondi in italiano.`
-            },
             {
               role: "user",
               content: `Utente: città=${user_city || "Italia"}, tipo=${user_type || "client"}, preferenze=${(user_preferences || []).join(", ") || "nessuna"}
@@ -83,49 +82,43 @@ Genera matching personalizzato.`
             },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "smart_match",
-              description: "Return smart matching results",
-              parameters: {
-                type: "object",
-                properties: {
-                  nearbyPros: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        name: { type: "string" },
-                        reason: { type: "string" },
-                        matchScore: { type: "number" }
-                      },
-                      required: ["id", "name", "reason", "matchScore"],
-                      additionalProperties: false
-                    }
-                  },
-                  smartOffers: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        title: { type: "string" },
-                        description: { type: "string" },
-                        type: { type: "string" }
-                      },
-                      required: ["title", "description", "type"],
-                      additionalProperties: false
-                    }
-                  },
-                  aiTips: { type: "array", items: { type: "string" } },
-                  greeting: { type: "string" }
+            name: "smart_match",
+            description: "Return smart matching results",
+            input_schema: {
+              type: "object",
+              properties: {
+                nearbyPros: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      name: { type: "string" },
+                      reason: { type: "string" },
+                      matchScore: { type: "number" }
+                    },
+                    required: ["id", "name", "reason", "matchScore"]
+                  }
                 },
-                required: ["nearbyPros", "smartOffers", "aiTips", "greeting"],
-                additionalProperties: false
-              }
+                smartOffers: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string" },
+                      description: { type: "string" },
+                      type: { type: "string" }
+                    },
+                    required: ["title", "description", "type"]
+                  }
+                },
+                aiTips: { type: "array", items: { type: "string" } },
+                greeting: { type: "string" }
+              },
+              required: ["nearbyPros", "smartOffers", "aiTips", "greeting"]
             }
           }],
-          tool_choice: { type: "function", function: { name: "smart_match" } }
+          tool_choice: { type: "tool", name: "smart_match" }
         }),
       });
 
@@ -148,9 +141,9 @@ Genera matching personalizzato.`
       }
 
       const result = await response.json();
-      const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall) {
-        return jsonResponse(JSON.parse(toolCall.function.arguments));
+      const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+      if (toolUse) {
+        return jsonResponse(toolUse.input);
       }
 
       return jsonResponse({
@@ -173,43 +166,41 @@ Genera matching personalizzato.`
         return jsonResponse({ matches: services || [] });
       }
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "claude-sonnet-5",
+          max_tokens: 800,
+          system: "Ordina i servizi per rilevanza rispetto alla query. Rispondi con tool call.",
           messages: [
-            { role: "system", content: "Ordina i servizi per rilevanza rispetto alla query. Rispondi con tool call." },
             { role: "user", content: `Query: "${query || 'servizi beauty'}"\nServizi: ${JSON.stringify(services)}` },
           ],
           tools: [{
-            type: "function",
-            function: {
-              name: "rank_services",
-              description: "Return ranked services",
-              parameters: {
-                type: "object",
-                properties: {
-                  ranked_ids: { type: "array", items: { type: "string" } },
-                  suggestion: { type: "string" }
-                },
-                required: ["ranked_ids", "suggestion"],
-                additionalProperties: false
-              }
+            name: "rank_services",
+            description: "Return ranked services",
+            input_schema: {
+              type: "object",
+              properties: {
+                ranked_ids: { type: "array", items: { type: "string" } },
+                suggestion: { type: "string" }
+              },
+              required: ["ranked_ids", "suggestion"]
             }
           }],
-          tool_choice: { type: "function", function: { name: "rank_services" } }
+          tool_choice: { type: "tool", name: "rank_services" }
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          const args = JSON.parse(toolCall.function.arguments);
+        const toolUse = result.content?.find((b: { type: string }) => b.type === "tool_use");
+        if (toolUse) {
+          const args = toolUse.input as { ranked_ids: string[]; suggestion: string };
           const ranked = args.ranked_ids
             .map((id: string) => services.find((s: any) => s.id === id))
             .filter(Boolean);

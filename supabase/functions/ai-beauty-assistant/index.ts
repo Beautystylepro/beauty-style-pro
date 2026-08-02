@@ -20,8 +20,8 @@ serve(async (req) => {
 
   try {
     try { await requireUser(req); } catch (r) { if (r instanceof Response) return r; throw r; }
-    const { messages, stream } = await req.json();
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const { messages } = await req.json();
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!apiKey) {
       return jsonResponse({ error: "AI non configurata" }, 500);
@@ -40,21 +40,22 @@ Il tuo ruolo:
 Non parlare mai di altre app o competitor. Promuovi sempre l'ecosistema Style.
 Rispondi in massimo 3-4 paragrafi brevi.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        temperature: 0.7,
+        model: "claude-sonnet-5",
         max_tokens: 800,
-        stream: !!stream,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: (messages || []).map((m: { role: string; content: string }) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: m.content,
+        })),
       }),
     });
 
@@ -67,19 +68,12 @@ Rispondi in massimo 3-4 paragrafi brevi.`;
       if (response.status === 402) {
         return jsonResponse({ content: FALLBACK_CONTENT });
       }
-      console.error("AI gateway error:", response.status);
+      console.error("Anthropic API error:", response.status, await response.text());
       return jsonResponse({ content: FALLBACK_CONTENT });
     }
 
-    // Stream mode - pass through SSE
-    if (stream) {
-      return new Response(response.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-      });
-    }
-
     const result = await response.json();
-    const content = result.choices?.[0]?.message?.content || "Mi dispiace, non riesco a rispondere.";
+    const content = result.content?.[0]?.text || "Mi dispiace, non riesco a rispondere.";
 
     return jsonResponse({ content });
   } catch (error: unknown) {
