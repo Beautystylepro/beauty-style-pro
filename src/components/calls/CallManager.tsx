@@ -15,7 +15,7 @@ export default function CallManager() {
     acceptCall, rejectCall, endCall, toggleMic, toggleCamera,
     stellaAnswering, dismissStellaAnswering,
   } = useCall();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const nav = useNavigate();
   const [isPremium, setIsPremium] = useState(false);
 
@@ -214,7 +214,23 @@ export default function CallManager() {
     const recognition = new Recognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = typeof navigator !== "undefined" ? navigator.language : "it-IT";
+    // Web Speech API requires knowing the spoken language in advance —
+    // there's no true "auto-detect what's being said" mode in the
+    // browser itself. We use the LOCAL user's own registered language as
+    // the best available default (more reliable than the browser's
+    // generic locale, which is often wrong on shared/travel devices),
+    // but if the actual speaker uses a different language than their
+    // profile says, transcription quality will suffer — a real
+    // limitation of the underlying browser technology, not something we
+    // can fully engineer around client-side. The translation step itself
+    // (Claude, via ai-translate) still auto-detects the SOURCE language
+    // from the transcribed text regardless of this setting.
+    const STT_LOCALES: Record<string, string> = {
+      it: "it-IT", en: "en-US", es: "es-ES", fr: "fr-FR", de: "de-DE",
+      pt: "pt-PT", ar: "ar-SA", zh: "zh-CN", ja: "ja-JP", ko: "ko-KR",
+      ru: "ru-RU", hi: "hi-IN", tr: "tr-TR", nl: "nl-NL", pl: "pl-PL", sv: "sv-SE",
+    };
+    recognition.lang = STT_LOCALES[profile?.preferred_language || "it"] || "it-IT";
 
     recognition.onresult = async (event: any) => {
       const lastResult = event.results[event.results.length - 1];
