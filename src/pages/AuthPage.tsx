@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { Eye, EyeOff, Mail, Lock, User, Scissors, Building2, MapPin, Phone, Camera, ChevronRight, ChevronLeft, Globe, Calendar, Briefcase, Upload, Loader2, CheckCircle, Instagram, AtSign, Banknote } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { toast } from "sonner";
@@ -416,18 +415,17 @@ export default function AuthPage() {
             type="button"
             onClick={async () => {
               setLoading(true);
-              const result = await lovable.auth.signInWithOAuth("google", {
-                redirect_uri: window.location.origin + nextPath,
+              const { error } = await supabase.auth.signInWithOAuth({
+                provider: "google",
+                options: { redirectTo: window.location.origin + nextPath },
               });
-              if (result.error) {
-                toast.error("Errore con Google: " + (result.error instanceof Error ? result.error.message : "Riprova"));
+              if (error) {
+                toast.error("Errore con Google: " + error.message);
                 setLoading(false);
                 return;
               }
-              if (result.redirected) return;
-              toast.success("Accesso con Google effettuato!");
-              navigate(nextPath);
-              setLoading(false);
+              // On success Supabase redirects the browser to Google — no
+              // further code here runs until the user comes back.
             }}
             disabled={loading}
             className="w-full h-12 rounded-xl bg-card border border-border/50 text-foreground font-semibold text-sm flex items-center justify-center gap-3 hover:bg-muted transition-colors disabled:opacity-50"
