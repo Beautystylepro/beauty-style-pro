@@ -66,18 +66,16 @@ export default function AuctionsPage() {
       toast.error(`L'offerta deve essere superiore a €${Number(auction.current_price).toFixed(2)}`);
       return;
     }
-    const { error } = await supabase.from("auction_bids").insert({
-      auction_id: auction.id,
-      bidder_id: user.id,
-      amount,
+    const { data, error } = await supabase.rpc("place_auction_bid", {
+      _auction_id: auction.id,
+      _amount: amount,
     });
-    if (error) { toast.error("Errore nell'offerta"); return; }
-    // Update auction current price
-    await supabase.from("auctions").update({
-      current_price: amount,
-      highest_bidder_id: user.id,
-      bid_count: (auction.bid_count || 0) + 1,
-    }).eq("id", auction.id);
+    const result = data?.[0];
+    if (error || !result?.success) {
+      toast.error(result?.message || "Errore nell'offerta");
+      fetchAuctions();
+      return;
+    }
     toast.success(`Offerta di €${amount.toFixed(2)} piazzata! 🎯`);
     setBidAmount(prev => ({ ...prev, [auction.id]: "" }));
     fetchAuctions();
