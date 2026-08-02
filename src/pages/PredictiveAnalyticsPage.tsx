@@ -26,8 +26,9 @@ export default function PredictiveAnalyticsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [insufficientDataMsg, setInsufficientDataMsg] = useState<string | null>(null);
 
-  const { data: insights = [], isLoading } = useQuery({
+  const { data: insights = [], isLoading, refetch } = useQuery({
     queryKey: ["predictive-insights"],
     queryFn: async () => {
       const { data } = await supabase
@@ -42,88 +43,30 @@ export default function PredictiveAnalyticsPage() {
     enabled: !!user,
   });
 
-  // Generate demo predictive cards when no real data
-  const predictiveCards: InsightCard[] = [
-    {
-      id: "rev",
-      type: "revenue",
-      title: "Previsione Revenue",
-      value: "€12,450",
-      change: 18,
-      confidence: 82,
-      icon: <DollarSign className="w-5 h-5" />,
-      color: "text-green-400",
-      detail: "Prossimi 30 giorni basato su trend storico",
-    },
-    {
-      id: "churn",
-      type: "churn",
-      title: "Rischio Churn",
-      value: "12 clienti",
-      change: -5,
-      confidence: 75,
-      icon: <AlertTriangle className="w-5 h-5" />,
-      color: "text-yellow-400",
-      detail: "Clienti che non prenotano da 45+ giorni",
-    },
-    {
-      id: "busy",
-      type: "busy_period",
-      title: "Periodo Più Attivo",
-      value: "Venerdì 14-18",
-      change: 25,
-      confidence: 90,
-      icon: <Calendar className="w-5 h-5" />,
-      color: "text-blue-400",
-      detail: "Basato su 6 mesi di prenotazioni",
-    },
-    {
-      id: "growth",
-      type: "growth",
-      title: "Crescita Follower",
-      value: "+340/mese",
-      change: 12,
-      confidence: 68,
-      icon: <Users className="w-5 h-5" />,
-      color: "text-purple-400",
-      detail: "Stima crescita organica social",
-    },
-    {
-      id: "roi",
-      type: "roi",
-      title: "ROI Marketing",
-      value: "4.2x",
-      change: 30,
-      confidence: 71,
-      icon: <Target className="w-5 h-5" />,
-      color: "text-primary",
-      detail: "Ritorno su investimento ads previsto",
-    },
-    {
-      id: "booking",
-      type: "booking",
-      title: "Prenotazioni Previste",
-      value: "87",
-      change: 8,
-      confidence: 85,
-      icon: <BarChart3 className="w-5 h-5" />,
-      color: "text-emerald-400",
-      detail: "Prossima settimana vs media",
-    },
-  ];
+  const handleGenerate = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    setInsufficientDataMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-predictive-insights", {});
+      if (error) throw error;
+      if (data?.insufficientData) {
+        setInsufficientDataMsg(data.message);
+      } else {
+        await refetch();
+      }
+    } catch {
+      setInsufficientDataMsg("Errore nella generazione dell'analisi. Riprova tra poco.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
-  const aiRecommendations = [
-    { emoji: "🎯", text: "Lancia una promozione martedì per riempire gli slot vuoti", priority: "high" },
-    { emoji: "📱", text: "Pubblica un Reel before/after il giovedì alle 18:00", priority: "high" },
-    { emoji: "💌", text: "Invia reminder ai 12 clienti a rischio churn", priority: "medium" },
-    { emoji: "💰", text: "Aumenta budget ads Instagram del 15% nel weekend", priority: "medium" },
-    { emoji: "⭐", text: "Chiedi recensioni ai clienti soddisfatti di questa settimana", priority: "low" },
-  ];
-
-  const priorityColors: Record<string, string> = {
-    high: "border-l-red-400",
-    medium: "border-l-yellow-400",
-    low: "border-l-green-400",
+  const insightIcons: Record<string, React.ReactNode> = {
+    revenue: <DollarSign className="w-5 h-5 text-green-400" />,
+    churn: <AlertTriangle className="w-5 h-5 text-yellow-400" />,
+    busy_period: <Calendar className="w-5 h-5 text-blue-400" />,
+    growth: <Users className="w-5 h-5 text-purple-400" />,
   };
 
   return (
@@ -141,98 +84,54 @@ export default function PredictiveAnalyticsPage() {
               </h1>
               <p className="text-xs text-muted-foreground">Previsioni intelligenti per il tuo business</p>
             </div>
-            <Button variant="outline" size="icon" aria-label="Aggiorna">
-              <RefreshCw className="w-4 h-4" />
+            <Button variant="outline" size="icon" aria-label="Genera analisi" onClick={handleGenerate} disabled={refreshing}>
+              {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             </Button>
           </div>
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Overall Score */}
-          <Card className="p-4 bg-gradient-to-br from-primary/20 to-purple-500/10 border-primary/30">
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center">
-                <Sparkles className="w-7 h-7 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground">Health Score Business</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl font-bold text-foreground">87</span>
-                  <span className="text-xs text-green-400 flex items-center gap-0.5">
-                    <TrendingUp className="w-3 h-3" /> +5%
-                  </span>
-                </div>
-                <Progress value={87} className="h-1.5 mt-1" />
-              </div>
-            </div>
-          </Card>
+          {insufficientDataMsg && (
+            <Card className="p-4 bg-muted/30 border-dashed">
+              <p className="text-sm text-muted-foreground">{insufficientDataMsg}</p>
+            </Card>
+          )}
 
-          {/* Predictive Cards Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {predictiveCards.map(card => (
-              <Card key={card.id} className="p-3 bg-card border-border">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={card.color}>{card.icon}</div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{card.type}</span>
-                </div>
-                <div className="text-lg font-bold text-foreground">{card.value}</div>
-                <div className="flex items-center gap-1 mt-1">
-                  {card.change >= 0 ? (
-                    <TrendingUp className="w-3 h-3 text-green-400" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3 text-red-400" />
-                  )}
-                  <span className={`text-xs ${card.change >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {card.change > 0 ? "+" : ""}{card.change}%
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 mt-2">
-                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full" style={{ width: `${card.confidence}%` }} />
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">{card.confidence}%</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1">{card.detail}</p>
-              </Card>
-            ))}
-          </div>
-
-          {/* AI Recommendations */}
-          <div>
-            <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" /> Azioni Raccomandate da AI
-            </h2>
-            <div className="space-y-2">
-              {aiRecommendations.map((rec, i) => (
-                <Card key={i} className={`p-3 bg-card border-border border-l-2 ${priorityColors[rec.priority]}`}>
+          {isLoading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+          ) : insights.length === 0 ? (
+            <Card className="p-6 text-center space-y-3">
+              <Brain className="w-10 h-10 text-primary mx-auto opacity-60" />
+              <p className="text-sm text-muted-foreground">
+                Nessuna analisi ancora generata. Tocca il pulsante di aggiornamento in alto per creare la tua prima analisi predittiva, basata sui tuoi dati reali degli ultimi 90 giorni.
+              </p>
+              <Button onClick={handleGenerate} disabled={refreshing} className="mx-auto">
+                {refreshing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                Genera la mia prima analisi
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {insights.map((insight: any) => (
+                <Card key={insight.id} className="p-4 bg-card border-border">
                   <div className="flex items-start gap-3">
-                    <span className="text-lg">{rec.emoji}</span>
+                    <div className="mt-0.5">{insightIcons[insight.insight_type] || <Sparkles className="w-5 h-5 text-primary" />}</div>
                     <div className="flex-1">
-                      <p className="text-sm text-foreground">{rec.text}</p>
-                      <Badge variant="outline" className="mt-1 text-[10px]">{rec.priority}</Badge>
+                      <p className="text-sm font-semibold text-foreground">{insight.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{insight.description}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="outline" className="text-[10px]">{insight.timeframe}</Badge>
+                        <div className="flex items-center gap-1 flex-1">
+                          <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden max-w-[80px]">
+                            <div className="h-full bg-primary rounded-full" style={{ width: `${insight.confidence_score}%` }} />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">Affidabilità: {insight.confidence_score}%</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </Card>
               ))}
-            </div>
-          </div>
-
-          {/* DB Insights */}
-          {insights.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-foreground mb-3">Insights Salvati</h2>
-              <div className="space-y-2">
-                {insights.map((insight: any) => (
-                  <Card key={insight.id} className="p-3 bg-card border-border">
-                    <p className="text-sm font-medium text-foreground">{insight.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{insight.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className="text-[10px]">{insight.insight_type}</Badge>
-                      <span className="text-[10px] text-muted-foreground">Confidenza: {insight.confidence_score}%</span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
             </div>
           )}
         </div>
