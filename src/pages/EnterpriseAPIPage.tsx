@@ -124,7 +124,13 @@ export default function EnterpriseAPIPage() {
 
     if (error || !data) {
       console.error("Errore nella creazione dell'API key:", error);
-      toast.error("Errore nella generazione della chiave");
+      if (error?.message?.includes("row-level security") || error?.code === "42501") {
+        toast.error("L'accesso API richiede un abbonamento Business o Premium", {
+          action: { label: "Passa a Business", onClick: () => navigate("/subscriptions") },
+        });
+      } else {
+        toast.error("Errore nella generazione della chiave");
+      }
       return;
     }
 

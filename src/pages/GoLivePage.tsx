@@ -71,7 +71,13 @@ export default function GoLivePage() {
     }).select().single();
 
     if (error) {
-      toast.error("Errore nell'avvio della live");
+      if (error.message?.includes("PREMIUM_LIVE_LIMIT")) {
+        toast.error("Hai già usato la tua diretta gratuita di oggi", {
+          action: { label: "Passa a Premium", onClick: () => navigate("/subscriptions") },
+        });
+      } else {
+        toast.error("Errore nell'avvio della live");
+      }
       setLoading(false);
       return;
     }
