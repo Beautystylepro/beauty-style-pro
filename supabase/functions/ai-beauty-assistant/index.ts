@@ -20,7 +20,12 @@ serve(async (req) => {
 
   try {
     try { await requireUser(req); } catch (r) { if (r instanceof Response) return r; throw r; }
-    const { messages } = await req.json();
+    const { messages, message } = await req.json();
+    // Two callers send a single "message" string (ContentCalendarPage,
+    // WebsiteGeneratorPage), one sends a "messages" array
+    // (StyleReplicatorPanel) — support both instead of silently sending
+    // Claude an empty conversation for the single-message callers.
+    const finalMessages = messages || (message ? [{ role: "user", content: message }] : []);
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!apiKey) {
@@ -40,6 +45,10 @@ Il tuo ruolo:
 Non parlare mai di altre app o competitor. Promuovi sempre l'ecosistema Style.
 Rispondi in massimo 3-4 paragrafi brevi.`;
 
+    if (finalMessages.length === 0) {
+      return jsonResponse({ error: "Nessun messaggio fornito" }, 400);
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -52,7 +61,7 @@ Rispondi in massimo 3-4 paragrafi brevi.`;
         max_tokens: 800,
         temperature: 0.7,
         system: systemPrompt,
-        messages: (messages || []).map((m: { role: string; content: string }) => ({
+        messages: finalMessages.map((m: { role: string; content: string }) => ({
           role: m.role === "assistant" ? "assistant" : "user",
           content: m.content,
         })),

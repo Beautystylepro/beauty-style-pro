@@ -1,7 +1,7 @@
 import MobileLayout from "@/components/layout/MobileLayout";
 import InteractiveMap, { MapMarker } from "@/components/map/InteractiveMap";
 import { ArrowLeft, Search, MapPin, Star, Filter, Sparkles, Home, Locate, Briefcase, Calendar, Tag } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -50,14 +50,19 @@ type MarkerFilter = "all" | "salon" | "job" | "event";
 
 export default function MapSearchPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { position, coords, detectGPS, setCity, loading: gpsLoading } = useGeolocation();
   const [search, setSearch] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const [specialtyFilter, setSpecialtyFilter] = useState("");
   const [maxDistance, setMaxDistance] = useState(50);
-  const [homeService, setHomeService] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  // Deep-link support: /map-search?home=1 (used by the "Domicilio" quick
+  // action on the home screen) lands here with the filter already active,
+  // instead of dropping the user on an unfiltered map they'd have to
+  // configure themselves.
+  const [homeService, setHomeService] = useState(searchParams.get("home") === "1");
+  const [showFilters, setShowFilters] = useState(searchParams.get("home") === "1");
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [jobs, setJobs] = useState<JobPost[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);

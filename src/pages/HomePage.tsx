@@ -198,7 +198,7 @@ export default function HomePage() {
             { Icon: ShoppingBag, label: "Shop", path: "/shop" },
             { Icon: MapIcon, label: "Mappa", path: "/map-search" },
             { Icon: Droplets, label: "Spa", path: "/spa-terme" },
-            { Icon: Home, label: "Domicilio", path: "/map-search" },
+            { Icon: Home, label: "Domicilio", path: "/map-search?home=1" },
             { Icon: Target, label: "Missioni", path: "/missions" },
             { Icon: Zap, label: "Quiz", path: "/quiz-live" },
             { Icon: Gamepad2, label: "Talent", path: "/talent-game" },
