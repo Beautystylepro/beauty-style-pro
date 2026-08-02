@@ -213,15 +213,25 @@ serve(async (req) => {
 
     // Build prompt from role
     let userType: string | undefined;
+    let preferredLanguage = "it";
     if (user_id) {
-      const { data: profile } = await supabase.from("profiles").select("user_type").eq("user_id", user_id).maybeSingle();
+      const { data: profile } = await supabase.from("profiles").select("user_type, preferred_language").eq("user_id", user_id).maybeSingle();
       userType = profile?.user_type;
+      preferredLanguage = profile?.preferred_language || "it";
     }
 
     const systemPrompt = resolvePrompt(role || "auto", userType);
     
     // Build enriched context
     let enrichedPrompt = systemPrompt;
+    if (preferredLanguage !== "it") {
+      const langNames: Record<string, string> = {
+        en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese",
+        ar: "Arabic", zh: "Chinese", ja: "Japanese", ko: "Korean", ru: "Russian",
+        hi: "Hindi", tr: "Turkish", nl: "Dutch", pl: "Polish", sv: "Swedish",
+      };
+      enrichedPrompt += `\n\nIMPORTANTE: questo utente ha scelto ${langNames[preferredLanguage] || preferredLanguage} come lingua preferita. Rispondi SEMPRE in ${langNames[preferredLanguage] || preferredLanguage}, non in italiano, mantenendo comunque i percorsi app (es. /wallet) invariati.`;
+    }
     if (user_id) {
       const userContext = await buildUserContext(supabase, user_id);
       enrichedPrompt += userContext;

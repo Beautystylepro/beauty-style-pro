@@ -1,13 +1,20 @@
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 export function useTranslation() {
+  const { profile } = useAuth();
   const [translating, setTranslating] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState(true);
   const cacheRef = useRef<Map<string, string>>(new Map());
 
-  // Auto-detect source language and translate to user's browser language
+  // La lingua di destinazione arriva prima di tutto dal profilo (scelta in
+  // fase di registrazione in base al paese), non dal browser — un utente
+  // che viaggia o usa un dispositivo condiviso avrebbe altrimenti una
+  // lingua sbagliata. Il browser resta solo un fallback se il profilo non
+  // è ancora caricato.
   const getUserLanguage = (): string => {
+    if (profile?.preferred_language) return profile.preferred_language;
     const browserLang = navigator.language?.split("-")[0] || "it";
     return browserLang;
   };

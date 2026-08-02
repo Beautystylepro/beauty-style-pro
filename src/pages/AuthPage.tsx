@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, Mail, Lock, User, Scissors, Building2, MapPin, Phone, Camera, ChevronRight, ChevronLeft, Globe, Calendar, Briefcase, Upload, Loader2, CheckCircle, Instagram, AtSign, Banknote } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { toast } from "sonner";
+import { languageFromCountry } from "@/lib/languageFromCountry";
 
 // ─── Types ───────────────────────────────────────────────
 type AccountType = "client" | "professional" | "business";
@@ -173,6 +174,7 @@ export default function AuthPage() {
       phone: phone || undefined,
       city: city || undefined,
       country: country || "Italia",
+      preferred_language: languageFromCountry(country || "Italia"),
       bio: bio || undefined,
       surname: surname || undefined,
       username: username || undefined,
