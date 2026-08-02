@@ -1,6 +1,9 @@
 import { useEffect, useRef, useMemo } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.markercluster";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 
 // Fix Leaflet default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -48,6 +51,28 @@ function createColorIcon(color: string): L.DivIcon {
   });
 }
 
+// Custom cluster bubbles matching the app's brand gradient (instead of
+// Leaflet's default yellow/orange clusters), sized by how many markers
+// they group — this is the difference between a map that reads as
+// professional at scale (Booking.com/Airbnb style) vs a scattered mess of
+// overlapping pins once a city has more than a handful of professionals.
+function createClusterIcon(cluster: L.MarkerCluster): L.DivIcon {
+  const count = cluster.getChildCount();
+  const size = count < 10 ? 36 : count < 50 ? 44 : 52;
+  const fontSize = count < 10 ? 13 : count < 50 ? 14 : 16;
+  return L.divIcon({
+    html: `<div style="
+      width: ${size}px; height: ${size}px; border-radius: 50%;
+      background: linear-gradient(135deg, #a855f7, #ec4899);
+      border: 3px solid white; box-shadow: 0 3px 10px rgba(168,85,247,0.4);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: ${fontSize}px;
+    ">${count}</div>`,
+    className: "custom-cluster-icon",
+    iconSize: L.point(size, size),
+  });
+}
+
 interface Props {
   center: [number, number];
   zoom?: number;
@@ -69,7 +94,8 @@ export default function InteractiveMap({
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const userMarkerLayerRef = useRef<L.LayerGroup | null>(null);
+  const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -89,13 +115,20 @@ export default function InteractiveMap({
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
 
-    markersLayerRef.current = L.layerGroup().addTo(map);
+    userMarkerLayerRef.current = L.layerGroup().addTo(map);
+    clusterGroupRef.current = L.markerClusterGroup({
+      iconCreateFunction: createClusterIcon,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      maxClusterRadius: 50,
+    }).addTo(map);
     mapInstanceRef.current = map;
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
-      markersLayerRef.current = null;
+      userMarkerLayerRef.current = null;
+      clusterGroupRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -110,10 +143,11 @@ export default function InteractiveMap({
 
   // Update markers
   useEffect(() => {
-    if (!markersLayerRef.current) return;
-    markersLayerRef.current.clearLayers();
+    if (!userMarkerLayerRef.current || !clusterGroupRef.current) return;
+    userMarkerLayerRef.current.clearLayers();
+    clusterGroupRef.current.clearLayers();
 
-    // User marker
+    // User marker (never clustered — always shown on its own)
     if (showUserMarker) {
       const userIcon = L.divIcon({
         className: "user-marker",
@@ -128,11 +162,12 @@ export default function InteractiveMap({
       });
       L.marker(center, { icon: userIcon })
         .bindPopup("<b>Tu sei qui</b>")
-        .addTo(markersLayerRef.current);
+        .addTo(userMarkerLayerRef.current);
     }
 
-    // Data markers
-    markers.forEach((m) => {
+    // Data markers — clustered so the map stays readable as results grow,
+    // instead of overlapping pins piling up on top of each other
+    const clusterMarkers: L.Marker[] = markers.map((m) => {
       const color = MARKER_COLORS[m.type] || MARKER_COLORS.salon;
       const icon = createColorIcon(color);
       const marker = L.marker([m.lat, m.lng], { icon });
@@ -144,8 +179,9 @@ export default function InteractiveMap({
         if (onMarkerClick) onMarkerClick(m);
       });
 
-      marker.addTo(markersLayerRef.current!);
+      return marker;
     });
+    clusterGroupRef.current.addLayers(clusterMarkers);
   }, [markers, center, showUserMarker, onMarkerClick]);
 
   return (
