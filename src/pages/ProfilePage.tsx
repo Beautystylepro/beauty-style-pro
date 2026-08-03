@@ -228,7 +228,10 @@ export default function ProfilePage() {
 
           {/* Name & Badge — centered */}
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-base font-bold tracking-tight">{displayProfile?.display_name || 'Utente STYLE'}</h2>
+            <h2 className="text-base font-bold tracking-tight">
+              {displayProfile?.display_name || 'Utente STYLE'}
+              {(displayProfile as any)?.surname ? ` ${(displayProfile as any).surname}` : ''}
+            </h2>
             <VerifiedBadge status={displayProfile?.verification_status} userType={displayProfile?.user_type} size="sm" showLabel />
             {displayProfile?.verification_status !== "verified" && (
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
