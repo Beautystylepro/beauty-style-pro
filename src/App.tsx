@@ -94,6 +94,7 @@ const BusinessTeamPage = lazy(() => import("./pages/BusinessTeamPage"));
 const EmployeeShiftsPage = lazy(() => import("./pages/EmployeeShiftsPage"));
 const EmployeeActivityPage = lazy(() => import("./pages/EmployeeActivityPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const CompleteProfilePage = lazy(() => import("./pages/CompleteProfilePage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const DebugPanelPage = lazy(() => import("./pages/DebugPanelPage"));
 const AILookGeneratorPage = lazy(() => import("./pages/AILookGeneratorPage"));
@@ -253,6 +254,7 @@ const App = () => {
             <Route path="/enterprise-api" element={<P><EnterpriseAPIPage /></P>} />
             <Route path="/tenant" element={<P><TenantDashboardPage /></P>} />
             <Route path="/debug" element={<P><DebugPanelPage /></P>} />
+            <Route path="/complete-profile" element={<P><CompleteProfilePage /></P>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>

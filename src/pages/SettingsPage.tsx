@@ -296,15 +296,15 @@ export default function SettingsPage() {
                   }`}
                 >
                   <div className="w-full h-10 rounded-lg flex gap-1.5 items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, hsl(170 100% 20%), hsl(170 80% 30%))" }}>
+                    style={{ background: "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%))" }}>
                     <div className="h-5 w-5 rounded-full bg-white/20" />
                     <div className="h-5 w-5 rounded-full bg-white/30" />
                     <div className="h-5 w-5 rounded-full bg-white/15" />
                   </div>
-                  <span className="text-xs font-semibold">🌲 Verde Petrolio</span>
+                  <span className="text-xs font-semibold">🟠 Oro Bronzo</span>
                   {colorTheme === "male" && (
                     <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: "hsl(170 100% 20%)" }}>
+                      style={{ backgroundColor: "hsl(32 80% 48%)" }}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.2 5.7L6.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </div>
                   )}
