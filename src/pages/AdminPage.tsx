@@ -17,6 +17,7 @@ export default function AdminPage() {
   const [reports, setReports] = useState<any[]>([]);
   const [verifications, setVerifications] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState<any[]>([]);
   const [commission, setCommission] = useState(5);
   const [subBreakdown, setSubBreakdown] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,6 +108,8 @@ export default function AdminPage() {
     if (tab === "payments") {
       const { data: rec } = await supabase.from("receipts").select("*").order("created_at", { ascending: false }).limit(50);
       if (rec) setReceipts(rec);
+      const { data: wr } = await supabase.from("withdrawal_requests").select("*, profiles:user_id(display_name)").order("created_at", { ascending: false }).limit(50);
+      if (wr) setWithdrawalRequests(wr);
     }
 
     setLoading(false);
@@ -115,6 +118,45 @@ export default function AdminPage() {
   const updateReportStatus = async (id: string, status: string) => {
     await supabase.from("user_reports").update({ status }).eq("id", id);
     toast.success(`Segnalazione ${status}`);
+    loadStats();
+  };
+
+  const updateWithdrawalStatus = async (id: string, status: "completed" | "rejected") => {
+    const request = withdrawalRequests.find(w => w.id === id);
+    if (!request) return;
+
+    if (status === "rejected") {
+      // Real refund: give the reserved balance back since the transfer
+      // will not happen after all.
+      const { error: creditError } = await supabase.rpc("credit_qr_coins", {
+        _user_id: request.user_id,
+        _amount: request.amount,
+      });
+      if (creditError) {
+        toast.error("Errore nel riaccredito, riprova");
+        return;
+      }
+      await supabase.from("notifications").insert({
+        user_id: request.user_id,
+        title: "Richiesta di prelievo rifiutata",
+        message: `La tua richiesta di prelievo di €${request.amount} è stata rifiutata e il saldo è stato riaccreditato.`,
+        type: "payment",
+      });
+    } else {
+      await supabase.from("notifications").insert({
+        user_id: request.user_id,
+        title: "Prelievo inviato ✅",
+        message: `Il tuo prelievo di €${request.amount} è stato inviato al tuo IBAN.`,
+        type: "payment",
+      });
+    }
+
+    await supabase.from("withdrawal_requests").update({
+      status,
+      processed_at: new Date().toISOString(),
+    }).eq("id", id);
+
+    toast.success(status === "completed" ? "Prelievo segnato come inviato" : "Prelievo rifiutato e riaccreditato");
     loadStats();
   };
 
@@ -312,6 +354,44 @@ export default function AdminPage() {
                 <p className="text-xs text-muted-foreground">Volume</p>
               </div>
             </div>
+
+            {withdrawalRequests.filter(w => w.status === "pending_review").length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold mb-2 flex items-center gap-2">
+                  🏦 Prelievi da revisionare manualmente
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-500/15 text-yellow-600">
+                    {withdrawalRequests.filter(w => w.status === "pending_review").length}
+                  </span>
+                </h3>
+                <div className="space-y-2 mb-4">
+                  {withdrawalRequests.filter(w => w.status === "pending_review").map(w => (
+                    <div key={w.id} className="p-3 rounded-xl bg-card border border-yellow-500/30">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold">{w.profiles?.display_name || "Utente"}</span>
+                        <span className="text-sm font-bold text-primary">€{w.amount}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">IBAN: {w.iban} {w.holder_name ? `· ${w.holder_name}` : ""}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => updateWithdrawalStatus(w.id, "completed")}
+                          className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+                        >
+                          Segna come inviato
+                        </button>
+                        <button
+                          onClick={() => updateWithdrawalStatus(w.id, "rejected")}
+                          className="flex-1 py-1.5 rounded-lg bg-destructive/15 text-destructive text-xs font-semibold"
+                        >
+                          Rifiuta e riaccredita
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {receipts.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Nessun pagamento registrato</p>
             ) : receipts.map(r => (

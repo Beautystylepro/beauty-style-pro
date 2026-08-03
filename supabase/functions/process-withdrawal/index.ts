@@ -50,7 +50,17 @@ serve(async (req) => {
       logStep("User not fully verified, flagging for review");
     }
 
+    // IMPORTANT: Stripe does not allow sending money to an arbitrary IBAN
+    // typed into a form — that would be trivially abusable for fraud.
+    // A real automatic bank transfer requires each professional to have
+    // their own Stripe Connect account (pending: needs the registered
+    // company/SRL to set up). Until then, this is honestly a manual
+    // request queued for admin review — the balance is safely reserved
+    // (debited) so it can't be spent twice, but no money moves
+    // automatically yet. Do not tell users a transfer is already "in
+    // progress" when nothing has actually been sent.
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    void stripe; // kept initialized for when Stripe Connect payouts are wired in
 
     // Atomically deduct balance (prevents TOCTOU race)
     const { data: newBalance, error: debitErr } = await supabase.rpc("debit_qr_coins", {
@@ -66,35 +76,47 @@ serve(async (req) => {
       user_id: user.id,
       type: "withdraw",
       amount: -amount,
-      description: `Prelievo IBAN ****${iban.slice(-4)}`,
+      description: `Richiesta prelievo IBAN ****${iban.slice(-4)} (in revisione)`,
       reference_type: "withdrawal",
     });
+
+    // Create a real admin work item so someone actually processes this
+    // by hand until automatic payouts exist — instead of the request
+    // silently vanishing into a "processing" state nobody ever resolves.
+    const { data: withdrawalRequest } = await supabase.from("withdrawal_requests").insert({
+      user_id: user.id,
+      amount,
+      iban,
+      holder_name: holderName || null,
+      status: "pending_review",
+    }).select("id").maybeSingle();
 
     // Create receipt
     await supabase.from("receipts").insert({
       user_id: user.id,
       receipt_type: "withdrawal",
-      service_name: `Prelievo su IBAN ****${iban.slice(-4)}`,
+      service_name: `Richiesta prelievo su IBAN ****${iban.slice(-4)}`,
       amount,
       payment_method: "bank_transfer",
       status: "processing",
     });
 
-    // Create notification
+    // Create notification — honest about this being a manual request,
+    // not an automated transfer already underway.
     await supabase.from("notifications").insert({
       user_id: user.id,
-      title: "Prelievo in elaborazione 🏦",
-      message: `Il tuo prelievo di €${amount} su IBAN ****${iban.slice(-4)} è in elaborazione. Riceverai i fondi entro 2-5 giorni lavorativi.`,
+      title: "Richiesta di prelievo ricevuta 🏦",
+      message: `La tua richiesta di prelievo di €${amount} su IBAN ****${iban.slice(-4)} è stata registrata ed è in revisione manuale. Ti aggiorneremo appena il bonifico sarà inviato.`,
       type: "payment",
     });
 
-    logStep("Withdrawal processed successfully", { newBalance });
+    logStep("Withdrawal request queued for manual review", { newBalance, requestId: withdrawalRequest?.id });
 
     return new Response(JSON.stringify({
       success: true,
-      message: "Prelievo in elaborazione",
+      message: "Richiesta di prelievo registrata, in revisione manuale",
       newBalance,
-      estimatedArrival: "2-5 giorni lavorativi",
+      manualReview: true,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
