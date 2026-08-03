@@ -1,4 +1,6 @@
-const CACHE_NAME = 'style-v2';
+// Bumped so browsers that already have an old service worker installed
+// pick up this fix and drop their old cached entries.
+const CACHE_NAME = 'style-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -21,6 +23,22 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('supabase') ||
     url.protocol === 'chrome-extension:'
   ) {
+    return;
+  }
+
+  // BUG FIX: the HTML document itself (navigation requests, and any
+  // path without a file extension — i.e. every app route since this is
+  // a single-page app) must NEVER be served from cache. It references
+  // the current build's hashed JS/CSS filenames; caching it could leave
+  // a user permanently stuck on an old version even after we ship real
+  // fixes, since the old HTML keeps pointing at old (possibly missing)
+  // asset hashes. Only the hashed static assets (JS/CSS/images, whose
+  // filenames change on every build) are safe to cache long-term.
+  const isNavigation = event.request.mode === 'navigate' || !url.pathname.includes('.');
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
+    );
     return;
   }
 
