@@ -1,6 +1,6 @@
 import MobileLayout from "@/components/layout/MobileLayout";
 import InteractiveMap, { MapMarker } from "@/components/map/InteractiveMap";
-import { ArrowLeft, Search, MapPin, Star, Filter, Sparkles, Home, Locate, Briefcase, Calendar, Tag } from "lucide-react";
+import { ArrowLeft, Search, MapPin, Star, Filter, Sparkles, Home, Locate, Briefcase, Calendar, Tag, Navigation2 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -64,6 +64,7 @@ export default function MapSearchPage() {
   // configure themselves.
   const [homeService, setHomeService] = useState(searchParams.get("home") === "1");
   const [navDestination, setNavDestination] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(searchParams.get("home") === "1");
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [jobs, setJobs] = useState<JobPost[]>([]);
@@ -323,6 +324,11 @@ export default function MapSearchPage() {
           </button>
           <h1 className="text-lg font-display font-bold">Trova Professionisti</h1>
           <div className="ml-auto flex gap-1.5">
+            <button onClick={() => setNavigationOpen(true)}
+              title="Naviga verso un indirizzo"
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
+              <Navigation2 className="w-4 h-4 text-muted-foreground" />
+            </button>
             <button onClick={handleDetectGPS} disabled={gpsLoading}
               className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
               <Locate className={`w-4 h-4 ${gpsLoading ? "animate-spin text-primary" : "text-muted-foreground"}`} />
@@ -489,8 +495,12 @@ export default function MapSearchPage() {
         )}
       </div>
 
-      {navDestination && (
-        <NavigationView destination={navDestination} onClose={() => setNavDestination(null)} />
+      {(navDestination || navigationOpen) && (
+        <NavigationView
+          destination={navDestination}
+          startCenter={{ lat: coords[0], lng: coords[1] }}
+          onClose={() => { setNavDestination(null); setNavigationOpen(false); }}
+        />
       )}
     </MobileLayout>
   );

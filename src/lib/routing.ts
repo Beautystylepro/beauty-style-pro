@@ -9,6 +9,36 @@ export interface RouteResult {
   durationSeconds: number;
 }
 
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+// Cerca un indirizzo qualsiasi (via, numero, città) e lo trasforma in
+// coordinate reali — tramite Nominatim (OpenStreetMap), lo stesso
+// servizio gratuito già usato per il percorso inverso (coordinate →
+// indirizzo). Prima la ricerca funzionava solo su un elenco fisso di
+// città italiane, non su indirizzi specifici.
+export async function geocodeAddress(query: string): Promise<GeocodeResult[]> {
+  if (!query || query.trim().length < 3) return [];
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: { "Accept-Language": "it" },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data || []).map((item: any) => ({
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      label: item.display_name,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchRoute(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
