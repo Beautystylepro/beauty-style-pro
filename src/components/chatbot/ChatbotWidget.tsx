@@ -107,9 +107,71 @@ export default function ChatbotWidget({ className = "" }: Props) {
     },
   });
 
+  const fallbackRecorderRef = useRef<MediaRecorder | null>(null);
+
+  // Il riconoscimento vocale nativo del browser (webkitSpeechRecognition)
+  // non è disponibile su tutti i dispositivi/browser (es. Firefox, alcuni
+  // browser mobili) — prima l'utente vedeva solo un errore e il
+  // microfono smetteva di funzionare del tutto. Ora, se non è
+  // disponibile, registriamo l'audio grezzo e lo mandiamo a
+  // voice-transcribe (Gemini), lo stesso sistema robusto già usato per
+  // le chiamate — funziona su qualsiasi dispositivo con un microfono,
+  // indipendentemente dal supporto del browser.
+  const startFallbackRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setIsVoiceCallActive(true);
+      setVoicePhase("listening");
+      toast("🎙️ Stella ti ascolta...", { duration: 4000 });
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: mimeType });
+        if (blob.size < 2000) {
+          toast.error("Non ho sentito nulla, riprova.");
+          setIsVoiceCallActive(false);
+          return;
+        }
+        setVoicePhase("processing");
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const audioBase64 = String(reader.result).split(",")[1] || "";
+          const { data, error } = await supabase.functions.invoke("voice-transcribe", {
+            body: { audioBase64, mimeType },
+          });
+          const spokenText: string = (data?.transcript || "").trim();
+          if (error || !spokenText) {
+            toast.error("Non sono riuscita a capire, riprova.");
+            setIsVoiceCallActive(false);
+            return;
+          }
+          await processVoiceCommand(spokenText);
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      recorder.start();
+      fallbackRecorderRef.current = recorder;
+      // Automatic stop after 5s of listening — a fixed-duration capture,
+      // simplest reliable approach for a single voice command.
+      window.setTimeout(() => {
+        try { recorder.stop(); } catch { /* already stopped */ }
+      }, 5000);
+    } catch {
+      toast.error("Permesso microfono negato. Attivalo nelle impostazioni del browser.");
+      setIsVoiceCallActive(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const startListening = useCallback(() => {
     if (!voiceSupported) {
-      toast.error("Il riconoscimento vocale non è disponibile su questo dispositivo.");
+      void startFallbackRecording();
       return;
     }
 
@@ -120,7 +182,7 @@ export default function ChatbotWidget({ className = "" }: Props) {
     window.setTimeout(() => {
       beginVoiceListening();
     }, 250);
-  }, [voiceSupported, beginVoiceListening, resetTranscript, stopWakeWordListening]);
+  }, [voiceSupported, beginVoiceListening, resetTranscript, stopWakeWordListening, startFallbackRecording]);
 
   useEffect(() => {
     if (!voiceSupported) return;
