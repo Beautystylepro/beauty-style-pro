@@ -81,6 +81,10 @@ interface Props {
   className?: string;
   showUserMarker?: boolean;
   onMarkerClick?: (marker: MapMarker) => void;
+  // Real turn-by-turn route geometry (the "blue line"), an ordered list
+  // of [lat, lng] points following actual roads — fetched from a real
+  // routing service, not a straight line between two points.
+  routeCoords?: [number, number][];
 }
 
 export default function InteractiveMap({
@@ -91,11 +95,13 @@ export default function InteractiveMap({
   className = "",
   showUserMarker = true,
   onMarkerClick,
+  routeCoords,
 }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const userMarkerLayerRef = useRef<L.LayerGroup | null>(null);
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
+  const routeLayerRef = useRef<L.Polyline | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -183,6 +189,29 @@ export default function InteractiveMap({
     });
     clusterGroupRef.current.addLayers(clusterMarkers);
   }, [markers, center, showUserMarker, onMarkerClick]);
+
+  // Draw the real route (the "blue line") when navigation is active,
+  // and keep the map framed on the whole route as it's recalculated.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (routeLayerRef.current) {
+      map.removeLayer(routeLayerRef.current);
+      routeLayerRef.current = null;
+    }
+
+    if (routeCoords && routeCoords.length > 1) {
+      const polyline = L.polyline(routeCoords, {
+        color: "#3b82f6",
+        weight: 6,
+        opacity: 0.85,
+        lineCap: "round",
+      }).addTo(map);
+      routeLayerRef.current = polyline;
+      map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    }
+  }, [routeCoords]);
 
   return (
     <div className={`relative rounded-2xl overflow-hidden border border-border/50 ${className}`} style={{ height }}>

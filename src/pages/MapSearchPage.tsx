@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import useGeolocation, { haversineDistance, getCoordsFromCity, ITALIAN_CITIES } from "@/hooks/useGeolocation";
 import { toast } from "sonner";
+import NavigationView from "@/components/map/NavigationView";
 
 type Professional = {
   id: string;
@@ -62,6 +63,7 @@ export default function MapSearchPage() {
   // instead of dropping the user on an unfiltered map they'd have to
   // configure themselves.
   const [homeService, setHomeService] = useState(searchParams.get("home") === "1");
+  const [navDestination, setNavDestination] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [showFilters, setShowFilters] = useState(searchParams.get("home") === "1");
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [jobs, setJobs] = useState<JobPost[]>([]);
@@ -465,7 +467,7 @@ export default function MapSearchPage() {
             </button>
             <div className="flex">
               <button
-                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`, "_blank")}
+                onClick={() => setNavDestination({ lat: p.latitude, lng: p.longitude, label: p.business_name })}
                 className="flex-1 py-2.5 bg-muted text-foreground text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-muted/80 transition-colors border-r border-border/30">
                 <Locate className="w-3.5 h-3.5" /> Indicazioni
               </button>
@@ -486,6 +488,10 @@ export default function MapSearchPage() {
           </div>
         )}
       </div>
+
+      {navDestination && (
+        <NavigationView destination={navDestination} onClose={() => setNavDestination(null)} />
+      )}
     </MobileLayout>
   );
 }
