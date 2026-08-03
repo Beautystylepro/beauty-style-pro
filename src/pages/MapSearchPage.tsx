@@ -85,9 +85,18 @@ export default function MapSearchPage() {
   };
 
   const loadProfessionals = async () => {
-    // Load both professionals AND registered profiles with GPS
+    // Load professionals, registered businesses (salons/companies), AND
+    // any other GPS-tagged profile as a last-resort fallback. Businesses
+    // were previously only picked up via the generic profiles fallback
+    // below, showing just a bare pin with the owner's personal name — no
+    // real business name, specialty, or rating, unlike professionals.
     const { data } = await supabase.from("professionals")
       .select("id, business_name, specialty, city, rating, review_count, hourly_rate, latitude, longitude, address, description, is_verified, user_id");
+
+    const { data: businessesData } = await supabase.from("businesses")
+      .select("id, business_name, business_type, city, rating, review_count, latitude, longitude, address, description, verified, user_id, logo_url")
+      .not("latitude", "is", null)
+      .not("longitude", "is", null);
     
     // Also load profiles that have coordinates (registered users nearby)
     const { data: profilesWithGps } = await supabase.from("profiles")
@@ -103,11 +112,34 @@ export default function MapSearchPage() {
         allPros.push({ ...p, avatar: p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.id}`, source: "professional", user_id: p.user_id });
       });
     }
+
+    if (businessesData && businessesData.length > 0) {
+      businessesData.forEach((b: any) => {
+        allPros.push({
+          id: b.id,
+          user_id: b.user_id,
+          source: "business",
+          business_name: b.business_name || "Salone",
+          specialty: b.business_type || "Salone/Azienda",
+          city: b.city,
+          rating: b.rating,
+          review_count: b.review_count,
+          hourly_rate: null,
+          latitude: b.latitude,
+          longitude: b.longitude,
+          address: b.address,
+          description: b.description,
+          is_verified: b.verified,
+          avatar: b.logo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${b.id}`,
+        });
+      });
+    }
     
-    // Add registered users with GPS as markers (if they're professionals/businesses)
+    // Last-resort fallback: any other registered professional/business
+    // profile with GPS but no row yet in professionals/businesses.
     if (profilesWithGps) {
       profilesWithGps.forEach(p => {
-        if ((p.user_type === "professional" || p.user_type === "business") && !allPros.find(pro => pro.id === p.user_id)) {
+        if ((p.user_type === "professional" || p.user_type === "business") && !allPros.find(pro => pro.user_id === p.user_id)) {
           allPros.push({
             id: p.user_id,
             user_id: p.user_id,
@@ -431,11 +463,18 @@ export default function MapSearchPage() {
                 <p className="text-sm font-bold">€{p.hourly_rate || 0}</p>
               </div>
             </button>
-            <button
-              onClick={() => navigate(`/booking/${p.id}`)}
-              className="w-full py-2.5 bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors">
-              <Calendar className="w-3.5 h-3.5" /> Prenota ora
-            </button>
+            <div className="flex">
+              <button
+                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}`, "_blank")}
+                className="flex-1 py-2.5 bg-muted text-foreground text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-muted/80 transition-colors border-r border-border/30">
+                <Locate className="w-3.5 h-3.5" /> Indicazioni
+              </button>
+              <button
+                onClick={() => navigate(`/booking/${p.id}`)}
+                className="flex-1 py-2.5 bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-primary/90 transition-colors">
+                <Calendar className="w-3.5 h-3.5" /> Prenota ora
+              </button>
+            </div>
           </div>
         ))}
 
