@@ -168,14 +168,10 @@ export default function QRTransferModal({ open, onClose, onComplete }: QRTransfe
         return;
       }
 
-      // Use SECURITY DEFINER function to bypass RLS (can't insert notifications for other users)
-      await supabase.rpc('create_notification', {
-        _user_id: recipient.user_id,
-        _title: "QR Coins Ricevuti! 🎉",
-        _message: `${profile?.display_name || "Qualcuno"} ti ha inviato ${amt} QR Coins`,
-        _type: "transfer",
-        _data: { sender_id: user.id, amount: amt },
-      });
+      // Notification is now created server-side (inside qr-coins-transaction)
+      // right after the real transfer is validated — the client no longer
+      // calls create_notification directly, since that RPC previously let
+      // any authenticated user notify any other user with arbitrary text.
 
       await refreshProfile();
       onComplete();

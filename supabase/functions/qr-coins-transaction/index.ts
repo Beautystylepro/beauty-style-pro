@@ -260,6 +260,23 @@ serve(async (req) => {
         { user_id: recipientUserId, amount, type: "earn", description: "Trasferimento ricevuto", reference_type: "p2p_transfer", reference_id: user.id },
       ]);
 
+      // Notification moved here (server-side, service role) instead of a
+      // direct client-side call to create_notification — that RPC let
+      // ANY authenticated user create an arbitrary-text notification
+      // for ANY other user (a real spam/phishing vector), completely
+      // disconnected from whether a real transfer even happened. Here
+      // the sender's name is looked up ourselves, not trusted from the
+      // client, and the notification only fires after a real, already-
+      // validated transfer.
+      const { data: senderProfile } = await admin.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+      await admin.from("notifications").insert({
+        user_id: recipientUserId,
+        title: "QR Coins Ricevuti! 🎉",
+        message: `${senderProfile?.display_name || "Qualcuno"} ti ha inviato ${amount} QR Coins`,
+        type: "transfer",
+        data: { sender_id: user.id, amount },
+      });
+
       return new Response(JSON.stringify({ success: true, newBalance: senderBalance }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
