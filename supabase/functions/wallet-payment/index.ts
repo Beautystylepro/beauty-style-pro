@@ -37,7 +37,7 @@ serve(async (req) => {
     }
     const user = userData.user;
 
-    const { amount, description, type, refId, affiliateCode } = await req.json();
+    const { amount, description, type, refId, affiliateCode, deliveryMethod, shippingAddress } = await req.json();
     const amt = Number(amount);
     if (!amt || amt <= 0) {
       return new Response(JSON.stringify({ error: "Importo non valido" }), {
@@ -77,6 +77,9 @@ serve(async (req) => {
         unit_price: amt,
         total_price: amt,
         payment_method: "wallet",
+        delivery_method: deliveryMethod === "pickup" ? "pickup" : "shipping",
+        shipping_address: deliveryMethod === "pickup" ? null : (shippingAddress || null),
+        shipping_status: deliveryMethod === "pickup" ? "ready_for_pickup" : "pending",
       });
     }
 

@@ -51,6 +51,8 @@ serve(async (req) => {
         const refId = session.metadata?.ref_id;
         const refType = session.metadata?.ref_type;
         const description = session.metadata?.description;
+        const deliveryMethod = session.metadata?.delivery_method;
+        const shippingAddress = session.metadata?.shipping_address;
         const customerEmail = session.customer_email || session.customer_details?.email;
         logStep("Checkout completed", { userId, customerEmail, mode: session.mode, refType, refId });
 
@@ -96,6 +98,9 @@ serve(async (req) => {
               unit_price: (session.amount_total || 0) / 100,
               total_price: (session.amount_total || 0) / 100,
               payment_method: "stripe",
+              delivery_method: deliveryMethod === "pickup" ? "pickup" : "shipping",
+              shipping_address: deliveryMethod === "pickup" ? null : (shippingAddress || null),
+              shipping_status: deliveryMethod === "pickup" ? "ready_for_pickup" : "pending",
             });
             if (prod?.seller_id) {
               const total = (session.amount_total || 0) / 100;

@@ -1,4 +1,4 @@
-import { ArrowLeft, CreditCard, Wallet, Banknote, QrCode, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CreditCard, Wallet, Banknote, QrCode, ShieldCheck, Truck, Store } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +19,8 @@ export default function CheckoutPage() {
   const [params] = useSearchParams();
   const [selected, setSelected] = useState("wallet");
   const [processing, setProcessing] = useState(false);
+  const [deliveryMethod, setDeliveryMethod] = useState<"shipping" | "pickup">("shipping");
+  const [shippingAddress, setShippingAddress] = useState("");
 
   const amount = parseFloat(params.get("amount") || "0");
   const description = params.get("desc") || "Pagamento";
@@ -39,6 +41,10 @@ export default function CheckoutPage() {
   }
 
   const handlePay = async () => {
+    if (type === "product" && deliveryMethod === "shipping" && !shippingAddress.trim()) {
+      toast.error("Inserisci l'indirizzo di spedizione, oppure scegli il ritiro in negozio");
+      return;
+    }
     setProcessing(true);
     try {
       // Stripe-based payments (card, paypal, klarna) — webhook records receipt
@@ -58,6 +64,8 @@ export default function CheckoutPage() {
             successUrl,
             paymentMethod: selected,
             cancelUrl: `${window.location.origin}/checkout?amount=${amount}&desc=${encodeURIComponent(description)}&type=${type}&ref=${refId}`,
+            deliveryMethod: type === "product" ? deliveryMethod : undefined,
+            shippingAddress: type === "product" && deliveryMethod === "shipping" ? shippingAddress : undefined,
           },
         });
         if (error) throw error;
@@ -77,14 +85,18 @@ export default function CheckoutPage() {
         }
         const affiliateCode = new URLSearchParams(window.location.search).get("aff");
         const { data, error } = await supabase.functions.invoke("wallet-payment", {
-          body: { amount, description, type, refId, affiliateCode },
+          body: {
+            amount, description, type, refId, affiliateCode,
+            deliveryMethod: type === "product" ? deliveryMethod : undefined,
+            shippingAddress: type === "product" && deliveryMethod === "shipping" ? shippingAddress : undefined,
+          },
         });
         if (error || data?.error) {
           toast.error(data?.error || "Pagamento fallito, riprova");
           setProcessing(false);
           return;
         }
-        toast.success("Pagamento completato!");
+        toast.success(deliveryMethod === "pickup" ? "Pagamento completato! Ritira in negozio quando pronto 🏪" : "Pagamento completato!");
         navigate(type === "booking" ? "/my-bookings" : "/wallet");
         return;
       }
@@ -116,6 +128,47 @@ export default function CheckoutPage() {
             )}
           </div>
         </div>
+
+        {/* Delivery Method — only for product purchases */}
+        {type === "product" && (
+          <div>
+            <h3 className="text-sm font-semibold mb-3">Consegna</h3>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setDeliveryMethod("shipping")}
+                className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-colors ${
+                  deliveryMethod === "shipping" ? "border-primary bg-primary/5" : "border-border/50"
+                }`}
+              >
+                <Truck className="w-5 h-5 text-primary" />
+                <span className="text-xs font-semibold">Spedizione</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeliveryMethod("pickup")}
+                className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-colors ${
+                  deliveryMethod === "pickup" ? "border-primary bg-primary/5" : "border-border/50"
+                }`}
+              >
+                <Store className="w-5 h-5 text-primary" />
+                <span className="text-xs font-semibold">Ritiro in negozio</span>
+              </button>
+            </div>
+            {deliveryMethod === "shipping" ? (
+              <input
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                placeholder="Indirizzo di spedizione completo"
+                className="w-full h-11 px-3 rounded-xl border border-border/50 bg-card text-sm"
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground px-1">
+                Riceverai una notifica quando il prodotto sarà pronto per il ritiro presso il negozio del venditore.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Payment Methods */}
         <div>

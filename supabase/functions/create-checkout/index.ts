@@ -45,6 +45,8 @@ serve(async (req) => {
       refId,
       refType,
       paymentMethod,
+      deliveryMethod,
+      shippingAddress,
     } = await req.json();
     if (!priceId && !amount) throw new Error("priceId or amount is required");
     logStep("Request parsed", { priceId, mode, amount, refType, refId, paymentMethod });
@@ -96,6 +98,8 @@ serve(async (req) => {
         ...(refId ? { ref_id: String(refId) } : {}),
         ...(refType ? { ref_type: String(refType) } : {}),
         ...(description ? { description: String(description).slice(0, 400) } : {}),
+        ...(deliveryMethod ? { delivery_method: String(deliveryMethod) } : {}),
+        ...(shippingAddress ? { shipping_address: String(shippingAddress).slice(0, 400) } : {}),
       },
     });
 
