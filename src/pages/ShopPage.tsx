@@ -1,7 +1,7 @@
 import MobileLayout from "@/components/layout/MobileLayout";
 import { ShoppingBag, Coins, ChevronRight, Gift, Star, Heart, Search, ShoppingCart, MessageCircle, Share2, CalendarDays, Briefcase, MapPin, Wand2, Tag, Gavel, Link2 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ export default function ShopPage() {
   const { user, profile } = useAuth();
   const [activeSection, setActiveSection] = useState<SectionKey>("products");
   const [products, setProducts] = useState<Product[]>([]);
+  const [params] = useSearchParams();
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [likedProducts, setLikedProducts] = useState<string[]>([]);
@@ -68,6 +69,15 @@ export default function ShopPage() {
   const qrCoins = profile?.qr_coins || 0;
 
   useEffect(() => { fetchAll(); }, []);
+
+  useEffect(() => {
+    const productId = params.get("product");
+    if (productId && products.length > 0) {
+      const found = products.find((p) => p.id === productId);
+      if (found) openProductDetail(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, params]);
 
   const fetchAll = async () => {
     setLoading(true);

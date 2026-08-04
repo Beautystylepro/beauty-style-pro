@@ -383,15 +383,39 @@ export default function ProfilePage() {
         )}
 
         {/* Horizontal Product Catalog — visible on other profiles */}
-        {!isOwnProfile && (isProfessional || isBusiness) && myProducts.length > 0 && (
+        {(isProfessional || isBusiness) && (isOwnProfile || myProducts.length > 0) && (
           <div className="mb-4">
             <div className="flex items-center justify-between px-1 mb-2">
-              <h3 className="text-xs font-bold">Catalogo Prodotti</h3>
-              <button onClick={() => setActiveTab("products")} className="text-xs text-primary font-semibold">Vedi tutti</button>
+              <h3 className="text-xs font-bold">Vetrina Prodotti</h3>
+              {myProducts.length > 0 && (
+                <button onClick={() => setActiveTab("products")} className="text-xs text-primary font-semibold">Vedi tutti</button>
+              )}
             </div>
             <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
+              {isOwnProfile && (
+                <>
+                  <button
+                    onClick={() => navigate("/manage-products")}
+                    className="min-w-[110px] max-w-[110px] rounded-xl border-2 border-dashed border-primary/40 flex-shrink-0 flex flex-col items-center justify-center gap-1.5 aspect-square text-primary"
+                  >
+                    <Plus className="w-6 h-6" />
+                    <span className="text-[11px] font-semibold text-center px-2">Aggiungi prodotto</span>
+                  </button>
+                  <button
+                    onClick={() => navigate("/offers")}
+                    className="min-w-[110px] max-w-[110px] rounded-xl border-2 border-dashed border-primary/40 flex-shrink-0 flex flex-col items-center justify-center gap-1.5 aspect-square text-primary"
+                  >
+                    <Tag className="w-6 h-6" />
+                    <span className="text-[11px] font-semibold text-center px-2">Crea offerta</span>
+                  </button>
+                </>
+              )}
               {myProducts.slice(0, 8).map(product => (
-                <div key={product.id} className="min-w-[120px] max-w-[120px] rounded-xl bg-card border border-border/50 overflow-hidden flex-shrink-0">
+                <button
+                  key={product.id}
+                  onClick={() => navigate(`/shop?product=${product.id}`)}
+                  className="min-w-[120px] max-w-[120px] rounded-xl bg-card border border-border/50 overflow-hidden flex-shrink-0 text-left hover:border-primary/40 transition-colors"
+                >
                   {product.image_url && (
                     <img src={product.image_url} alt="" className="w-full aspect-square object-cover" />
                   )}
@@ -399,12 +423,12 @@ export default function ProfilePage() {
                     <p className="text-[11px] font-semibold truncate">{product.name}</p>
                     <p className="text-xs text-primary font-bold">€{product.price}</p>
                     {product.ai_preview_enabled && (
-                      <button onClick={() => navigate("/ai-look")} className="mt-1 w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-semibold">
+                      <button onClick={(e) => { e.stopPropagation(); navigate("/ai-look"); }} className="mt-1 w-full flex items-center justify-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-semibold">
                         <Wand2 className="w-2.5 h-2.5" /> Prova AI
                       </button>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
