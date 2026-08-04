@@ -3,34 +3,41 @@ import safeStorage from "@/lib/safeStorage";
 
 export type ColorTheme = "female" | "male";
 
+// Viola di lusso: profondo, forte, "verniciato" — non il viola pastello
+// di prima, un vero viola gioiello con riflesso lucido, in linea con
+// un'app che deve sembrare professionale e di pregio, non solo social.
 const FEMALE = {
-  primary: "262 80% 62%",
-  ring: "262 80% 62%",
-  sidebarPrimary: "262 80% 62%",
-  sidebarRing: "262 80% 62%",
-  gradientPrimary: "linear-gradient(135deg, hsl(262 80% 62%), hsl(290 70% 58%))",
-  gradientLuxury: "linear-gradient(135deg, hsl(262 80% 62%), hsl(290 70% 58%), hsl(320 65% 55%))",
-  gradientChrome: "linear-gradient(135deg, hsl(240 6% 88%), hsl(262 30% 72%), hsl(240 6% 60%))",
-  gradientChromeDark: "linear-gradient(135deg, hsl(240 5% 18%), hsl(262 20% 22%), hsl(240 5% 12%))",
-  gradientChromeText: "linear-gradient(135deg, hsl(0 0% 95%), hsl(262 30% 82%), hsl(0 0% 70%))",
-  gradientChromeBorder: "linear-gradient(135deg, hsl(0 0% 30%), hsl(262 20% 40%), hsl(0 0% 20%))",
-  shadowGlow: "0 0 40px hsl(262 80% 62% / 0.3)",
-  shadowLuxury: "0 8px 32px hsl(262 80% 62% / 0.15), 0 2px 8px hsl(0 0% 0% / 0.5)",
+  primary: "271 78% 42%",
+  ring: "271 78% 42%",
+  sidebarPrimary: "271 78% 42%",
+  sidebarRing: "271 78% 42%",
+  gradientPrimary: "linear-gradient(135deg, hsl(271 82% 36%), hsl(285 75% 52%), hsl(258 78% 44%))",
+  gradientLuxury: "linear-gradient(135deg, hsl(271 85% 32%), hsl(288 78% 50%), hsl(255 80% 40%))",
+  gradientChrome: "linear-gradient(135deg, hsl(240 6% 88%), hsl(271 35% 68%), hsl(240 6% 60%))",
+  gradientChromeDark: "linear-gradient(135deg, hsl(240 5% 18%), hsl(271 30% 20%), hsl(240 5% 12%))",
+  gradientChromeText: "linear-gradient(135deg, hsl(0 0% 95%), hsl(271 35% 78%), hsl(0 0% 70%))",
+  gradientChromeBorder: "linear-gradient(135deg, hsl(0 0% 30%), hsl(271 30% 38%), hsl(0 0% 20%))",
+  shadowGlow: "0 0 40px hsl(271 78% 42% / 0.35)",
+  shadowLuxury: "0 8px 32px hsl(271 78% 42% / 0.22), 0 2px 8px hsl(0 0% 0% / 0.5)",
 };
 
+// Oro lingotto: oro puro e ricco (tonalità 45-48°, alta saturazione),
+// non più il bronzo/arancione di prima (tonalità 32° leggeva come
+// "ruggine" più che oro) — pensato per un effetto metallo prezioso
+// lucido, il più "carati" possibile senza perdere leggibilità.
 const MALE = {
-  primary: "32 80% 48%",             // Oro bronzo caldo #D4882A
-  ring: "32 80% 48%",
-  sidebarPrimary: "32 80% 48%",
-  sidebarRing: "32 80% 48%",
-  gradientPrimary: "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%))",
-  gradientLuxury: "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%), hsl(25 70% 42%))",
-  gradientChrome: "linear-gradient(135deg, hsl(240 6% 88%), hsl(38 40% 72%), hsl(240 6% 60%))",
-  gradientChromeDark: "linear-gradient(135deg, hsl(240 5% 18%), hsl(32 25% 22%), hsl(240 5% 12%))",
-  gradientChromeText: "linear-gradient(135deg, hsl(0 0% 95%), hsl(38 40% 82%), hsl(0 0% 70%))",
-  gradientChromeBorder: "linear-gradient(135deg, hsl(0 0% 30%), hsl(32 25% 40%), hsl(0 0% 20%))",
-  shadowGlow: "0 0 40px hsl(32 80% 48% / 0.3)",
-  shadowLuxury: "0 8px 32px hsl(32 80% 48% / 0.15), 0 2px 8px hsl(0 0% 0% / 0.5)",
+  primary: "45 88% 45%",
+  ring: "45 88% 45%",
+  sidebarPrimary: "45 88% 45%",
+  sidebarRing: "45 88% 45%",
+  gradientPrimary: "linear-gradient(135deg, hsl(38 80% 38%), hsl(48 96% 58%), hsl(43 90% 46%))",
+  gradientLuxury: "linear-gradient(135deg, hsl(36 82% 32%), hsl(50 98% 62%), hsl(42 88% 40%))",
+  gradientChrome: "linear-gradient(135deg, hsl(240 6% 88%), hsl(45 55% 70%), hsl(240 6% 60%))",
+  gradientChromeDark: "linear-gradient(135deg, hsl(240 5% 18%), hsl(42 35% 24%), hsl(240 5% 12%))",
+  gradientChromeText: "linear-gradient(135deg, hsl(0 0% 95%), hsl(45 55% 80%), hsl(0 0% 70%))",
+  gradientChromeBorder: "linear-gradient(135deg, hsl(0 0% 30%), hsl(42 35% 42%), hsl(0 0% 20%))",
+  shadowGlow: "0 0 40px hsl(45 88% 45% / 0.35)",
+  shadowLuxury: "0 8px 32px hsl(45 88% 45% / 0.22), 0 2px 8px hsl(0 0% 0% / 0.5)",
 };
 
 const THEMES: Record<ColorTheme, typeof FEMALE> = { female: FEMALE, male: MALE };

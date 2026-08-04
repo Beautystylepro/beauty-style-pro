@@ -7,12 +7,12 @@ import safeStorage from "@/lib/safeStorage";
 const savedColorTheme = safeStorage.getItem("style-color-theme");
 if (savedColorTheme === "male") {
   const r = document.documentElement;
-  r.style.setProperty("--primary", "32 80% 48%");
-  r.style.setProperty("--ring", "32 80% 48%");
-  r.style.setProperty("--sidebar-primary", "32 80% 48%");
-  r.style.setProperty("--sidebar-ring", "32 80% 48%");
-  r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%))");
-  r.style.setProperty("--shadow-glow", "0 0 40px hsl(32 80% 48% / 0.3)");
+  r.style.setProperty("--primary", "45 88% 45%");
+  r.style.setProperty("--ring", "45 88% 45%");
+  r.style.setProperty("--sidebar-primary", "45 88% 45%");
+  r.style.setProperty("--sidebar-ring", "45 88% 45%");
+  r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(38 80% 38%), hsl(48 96% 58%), hsl(43 90% 46%))");
+  r.style.setProperty("--shadow-glow", "0 0 40px hsl(45 88% 45% / 0.3)");
 }
 
 const savedTheme = safeStorage.getItem("style-theme");

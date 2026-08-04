@@ -272,15 +272,15 @@ export default function SettingsPage() {
                   }`}
                 >
                   <div className="w-full h-10 rounded-lg flex gap-1.5 items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, hsl(262 80% 62%), hsl(290 70% 58%))" }}>
+                    style={{ background: "linear-gradient(135deg, hsl(271 82% 36%), hsl(285 75% 52%), hsl(258 78% 44%))" }}>
                     <div className="h-5 w-5 rounded-full bg-white/20" />
                     <div className="h-5 w-5 rounded-full bg-white/30" />
                     <div className="h-5 w-5 rounded-full bg-white/15" />
                   </div>
-                  <span className="text-xs font-semibold">💜 Viola</span>
+                  <span className="text-xs font-semibold">💜 Viola Luxury</span>
                   {colorTheme === "female" && (
                     <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: "hsl(262 80% 62%)" }}>
+                      style={{ backgroundColor: "hsl(271 78% 42%)" }}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.2 5.7L6.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </div>
                   )}
@@ -296,15 +296,15 @@ export default function SettingsPage() {
                   }`}
                 >
                   <div className="w-full h-10 rounded-lg flex gap-1.5 items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%))" }}>
+                    style={{ background: "linear-gradient(135deg, hsl(38 80% 38%), hsl(48 96% 58%), hsl(43 90% 46%))" }}>
                     <div className="h-5 w-5 rounded-full bg-white/20" />
                     <div className="h-5 w-5 rounded-full bg-white/30" />
                     <div className="h-5 w-5 rounded-full bg-white/15" />
                   </div>
-                  <span className="text-xs font-semibold">🟠 Oro Bronzo</span>
+                  <span className="text-xs font-semibold">🏆 Oro Lingotto</span>
                   {colorTheme === "male" && (
                     <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: "hsl(32 80% 48%)" }}>
+                      style={{ backgroundColor: "hsl(45 88% 45%)" }}>
                       <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3.2 5.7L6.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </div>
                   )}

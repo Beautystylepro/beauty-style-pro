@@ -49,15 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // trigger CSS variable update by dispatching a custom event
         const r = document.documentElement;
         if (ct === "male") {
-          r.style.setProperty("--primary", "32 80% 48%");
-          r.style.setProperty("--ring", "32 80% 48%");
-          r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(32 80% 48%), hsl(38 90% 55%))");
-          r.style.setProperty("--shadow-glow", "0 0 40px hsl(32 80% 48% / 0.3)");
+          r.style.setProperty("--primary", "45 88% 45%");
+          r.style.setProperty("--ring", "45 88% 45%");
+          r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(38 80% 38%), hsl(48 96% 58%), hsl(43 90% 46%))");
+          r.style.setProperty("--shadow-glow", "0 0 40px hsl(45 88% 45% / 0.3)");
         } else {
-          r.style.setProperty("--primary", "262 80% 62%");
-          r.style.setProperty("--ring", "262 80% 62%");
-          r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(262 80% 62%), hsl(290 70% 58%))");
-          r.style.setProperty("--shadow-glow", "0 0 40px hsl(262 80% 62% / 0.3)");
+          r.style.setProperty("--primary", "271 78% 42%");
+          r.style.setProperty("--ring", "271 78% 42%");
+          r.style.setProperty("--gradient-primary", "linear-gradient(135deg, hsl(271 82% 36%), hsl(285 75% 52%), hsl(258 78% 44%))");
+          r.style.setProperty("--shadow-glow", "0 0 40px hsl(271 78% 42% / 0.3)");
         }
       }).catch(() => {});
     }
