@@ -236,32 +236,67 @@ export function useStellaAgent() {
 
   useEffect(() => () => clearWakeWordResumeTimeout(), [clearWakeWordResumeTimeout]);
 
-  // Auto-start wake word listening on mount (once)
+  // Auto-start wake word listening on mount (once) — but ONLY when
+  // microphone permission is already granted. Previously this always
+  // silently attempted getUserMedia 800ms after mount with no user
+  // gesture at all: on a first visit (or after a permission was ever
+  // denied), the browser's permission prompt either appears
+  // unexpectedly and gets missed/dismissed, or isn't shown again at
+  // all after a prior denial — wake word then silently never starts,
+  // with a misleading "Stella is listening" toast regardless. Now: if
+  // permission isn't already granted, we surface a real, tappable
+  // prompt (needsMicPermissionPrompt) instead of guessing.
   const wakeWordStartedRef = useRef(false);
+  const [needsMicPermissionPrompt, setNeedsMicPermissionPrompt] = useState(false);
   useEffect(() => {
     if (!isSupported || !wakeWordActive || wakeWordStartedRef.current) return;
     if (isWakeWordListening || isListening) return;
 
-    wakeWordStartedRef.current = true;
-    const timer = window.setTimeout(() => startWakeWordListening(), 800);
-    // First-time hint: tell the user Stella is listening globally,
-    // so they know they can say "Stella + comando" from ANY page.
-    try {
-      const KEY = 'stella_wake_hint_shown_v1';
-      if (typeof window !== 'undefined' && !window.localStorage.getItem(KEY)) {
-        window.setTimeout(() => {
-          toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', {
-            duration: 6000,
-          });
-          try { window.localStorage.setItem(KEY, '1'); } catch { /* best-effort, ignore */ }
-        }, 1500);
+    let cancelled = false;
+    (async () => {
+      let granted = false;
+      try {
+        if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+          const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          granted = status.state === 'granted';
+        }
+      } catch {
+        // Permissions API unsupported (e.g. Safari) — fall back to
+        // showing the explicit prompt rather than guessing blind.
+        granted = false;
       }
-    } catch { /* best-effort, ignore */ }
-    return () => {
-      window.clearTimeout(timer);
-      wakeWordStartedRef.current = false;
-    };
+      if (cancelled) return;
+
+      if (granted) {
+        wakeWordStartedRef.current = true;
+        window.setTimeout(() => startWakeWordListening(), 800);
+        try {
+          const KEY = 'stella_wake_hint_shown_v1';
+          if (!window.localStorage.getItem(KEY)) {
+            window.setTimeout(() => {
+              toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', { duration: 6000 });
+              try { window.localStorage.setItem(KEY, '1'); } catch { /* best-effort, ignore */ }
+            }, 1500);
+          }
+        } catch { /* best-effort, ignore */ }
+      } else {
+        // Real, visible action required — a genuine tap satisfies the
+        // browser's permission-prompt expectations properly and makes
+        // the request a conscious moment instead of a silent surprise.
+        setNeedsMicPermissionPrompt(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [isSupported, wakeWordActive]); // minimal deps to avoid re-trigger loops
+
+  const enableWakeWordNow = useCallback(() => {
+    setNeedsMicPermissionPrompt(false);
+    wakeWordStartedRef.current = true;
+    startWakeWordListening();
+    toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', { duration: 6000 });
+    try { window.localStorage.setItem('stella_wake_hint_shown_v1', '1'); } catch { /* best-effort, ignore */ }
+  }, [startWakeWordListening]);
 
   // Process transcript when command listening ends
   useEffect(() => {
@@ -2024,6 +2059,7 @@ export function useStellaAgent() {
     pendingCommand, isSupported, isAIThinking, proactiveSuggestions,
     inlineStatus, clearInlineStatus,
     actionSteps, clearSteps,
+    needsMicPermissionPrompt, enableWakeWordNow,
     toggleWakeWord, toggleTTS, toggleListening,
     sendTextCommand, confirmAction, cancelAction,
     repeatPending,

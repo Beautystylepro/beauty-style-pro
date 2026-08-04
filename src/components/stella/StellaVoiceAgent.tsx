@@ -11,6 +11,7 @@ export default function StellaVoiceAgent() {
     pendingCommand, isSupported, isAIThinking, proactiveSuggestions,
     inlineStatus, clearInlineStatus,
     actionSteps, clearSteps,
+    needsMicPermissionPrompt, enableWakeWordNow,
     toggleWakeWord, toggleTTS, toggleListening,
     sendTextCommand, confirmAction, cancelAction, repeatPending, clearMessages,
   } = useStellaAgent();
@@ -168,6 +169,22 @@ export default function StellaVoiceAgent() {
 
       {/* ═══ FLOATING BUTTON ═══ */}
       <AnimatePresence>
+        {!isOpen && needsMicPermissionPrompt && (
+          <motion.button
+            type="button"
+            onClick={enableWakeWordNow}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="fixed bottom-[164px] right-4 z-[9999] max-w-[220px] rounded-2xl bg-card border border-primary/40 shadow-lg px-3 py-2.5 flex items-center gap-2 text-left pointer-events-auto"
+          >
+            <Mic className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-[11px] font-semibold leading-snug">Tocca per attivare "Ehi Stella" in ascolto continuo</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {!isOpen && (
           <motion.button
             type="button"
@@ -179,7 +196,9 @@ export default function StellaVoiceAgent() {
               // Se il wake word non è partito (permesso microfono negato o non
               // ancora concesso), il tap dell'utente lo autorizza e avvia
               // subito l'ascolto continuo stile Siri.
-              if (isSupported && wakeWordActive && !isWakeWordListening && !isListening) {
+              if (needsMicPermissionPrompt) {
+                enableWakeWordNow();
+              } else if (isSupported && wakeWordActive && !isWakeWordListening && !isListening) {
                 toggleWakeWord();
                 setTimeout(() => toggleWakeWord(), 50);
               }
