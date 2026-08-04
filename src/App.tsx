@@ -99,6 +99,7 @@ const CourseDetailPage = lazy(() => import("./pages/CourseDetailPage"));
 const CreateCoursePage = lazy(() => import("./pages/CreateCoursePage"));
 const AdsManagerPage = lazy(() => import("./pages/AdsManagerPage"));
 const MarketingCampaignPage = lazy(() => import("./pages/MarketingCampaignPage"));
+const ShippingManagerPage = lazy(() => import("./pages/ShippingManagerPage"));
 const CompleteProfilePage = lazy(() => import("./pages/CompleteProfilePage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const DebugPanelPage = lazy(() => import("./pages/DebugPanelPage"));
@@ -265,6 +266,7 @@ const App = () => {
             <Route path="/academy/:id" element={<P><CourseDetailPage /></P>} />
             <Route path="/ads-manager" element={<P><AdsManagerPage /></P>} />
             <Route path="/marketing" element={<P><MarketingCampaignPage /></P>} />
+            <Route path="/shipping" element={<P><ShippingManagerPage /></P>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
