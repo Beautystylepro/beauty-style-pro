@@ -35,8 +35,8 @@ export default function MarketingCampaignPage() {
   });
 
   const handleGenerate = async () => {
-    if (!goal.trim()) {
-      toast.error("Descrivi cosa vuoi comunicare (es: promozione sconto 20% weekend)");
+    if (!goal.trim() && !message.trim()) {
+      toast.error("Descrivi cosa vuoi comunicare, oppure scrivi già una bozza da migliorare");
       return;
     }
     setGenerating(true);
@@ -44,6 +44,7 @@ export default function MarketingCampaignPage() {
       body: {
         channel,
         goal,
+        existingText: message,
         businessName: profile?.display_name,
         businessType: (profile as any)?.category || "beauty",
         tone: "amichevole",
@@ -134,7 +135,7 @@ export default function MarketingCampaignPage() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold mb-1 block">Cosa vuoi comunicare?</label>
+            <label className="text-xs font-semibold mb-1 block">Cosa vuoi comunicare? (opzionale se scrivi già il testo sotto)</label>
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
@@ -147,7 +148,7 @@ export default function MarketingCampaignPage() {
               disabled={generating}
               className="mt-2 w-full h-10 rounded-xl border border-primary/40 text-primary text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Sparkles className="w-4 h-4" /> {generating ? "Scrivo con Claude..." : "Genera testo con Claude"}
+              <Sparkles className="w-4 h-4" /> {generating ? "Scrivo con Claude..." : message.trim() ? "Migliora il testo con Claude" : "Genera testo con Claude"}
             </button>
           </div>
 
@@ -168,7 +169,7 @@ export default function MarketingCampaignPage() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={6}
-              placeholder="Il testo apparirà qui — puoi modificarlo liberamente"
+              placeholder="Scrivi qui la tua bozza (Claude la correggerà e migliorerà), oppure lascia vuoto e usa 'Genera' sopra"
               className="w-full px-3 py-2 rounded-xl border border-border/50 bg-card text-sm"
             />
           </div>
