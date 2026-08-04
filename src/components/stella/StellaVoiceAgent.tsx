@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, X, Mic, MicOff, Volume2, VolumeX, Send, Check, XCircle, Radio, Loader2, ChevronUp, RotateCcw } from 'lucide-react';
+import { Sparkles, X, Mic, MicOff, Volume2, VolumeX, Send, Check, XCircle, Radio, Loader2, ChevronUp, RotateCcw, Camera } from 'lucide-react';
 import { useStellaAgent } from '@/hooks/useStellaAgent';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function StellaVoiceAgent() {
   const {
@@ -13,7 +14,7 @@ export default function StellaVoiceAgent() {
     actionSteps, clearSteps,
     needsMicPermissionPrompt, enableWakeWordNow,
     toggleWakeWord, toggleTTS, toggleListening,
-    sendTextCommand, confirmAction, cancelAction, repeatPending, clearMessages,
+    sendTextCommand, confirmAction, cancelAction, repeatPending, clearMessages, addMessage,
   } = useStellaAgent();
 
   const [input, setInput] = useState('');
@@ -29,6 +30,38 @@ export default function StellaVoiceAgent() {
     sendTextCommand(input);
     setInput('');
   }, [input, sendTextCommand]);
+
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const handlePhotoSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    addMessage({ role: 'user', content: '📷 [Foto inviata per un consiglio di stile]' });
+    setAnalyzingPhoto(true);
+    try {
+      const reader = new FileReader();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const imageBase64 = dataUrl.split(',')[1] || '';
+      const { data, error } = await supabase.functions.invoke('ai-style-advisor', {
+        body: { imageBase64, mimeType: file.type || 'image/jpeg' },
+      });
+      if (error || data?.error) {
+        addMessage({ role: 'stella', content: 'Non sono riuscita ad analizzare la foto, riprova. 😔' });
+      } else {
+        addMessage({ role: 'stella', content: data.advice, type: 'action_result' });
+      }
+    } catch {
+      addMessage({ role: 'stella', content: 'Errore nel caricamento della foto, riprova.' });
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  }, [addMessage]);
 
   // Auto-dismiss inline status after 4s
   useEffect(() => {
@@ -434,6 +467,23 @@ export default function StellaVoiceAgent() {
               </div>
 
               <div className="px-4 py-3 border-t border-border/50 flex items-center gap-2">
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  className="hidden"
+                  onChange={handlePhotoSelected}
+                />
+                <button
+                  type="button"
+                  aria-label="Chiedi un consiglio di stile con una foto"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={analyzingPhoto || isAIThinking}
+                  className="w-10 h-10 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 flex items-center justify-center shrink-0 disabled:opacity-50"
+                >
+                  {analyzingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+                </button>
                 <input
                   value={input}
                   onChange={e => setInput(e.target.value)}

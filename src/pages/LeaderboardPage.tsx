@@ -27,7 +27,7 @@ export default function LeaderboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("Guadagni");
-  const [leaderboardData, setLeaderboardData] = useState(fallbackData);
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [myScore, setMyScore] = useState(0);
 
@@ -61,7 +61,12 @@ export default function LeaderboardPage() {
       if (user) {
         const idx = data.findIndex((d: any) => d.user_id === user.id);
         if (idx >= 0) { setMyRank(idx + 1); setMyScore(data[idx].score); }
+        else { setMyRank(null); setMyScore(0); }
       }
+    } else {
+      setLeaderboardData([]);
+      setMyRank(null);
+      setMyScore(0);
     }
   };
 
@@ -90,6 +95,14 @@ export default function LeaderboardPage() {
       </header>
 
       <div className="p-4">
+        {leaderboardData.length === 0 && (
+          <div className="text-center py-12">
+            <TrendingUp className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+            <p className="text-sm font-semibold">Nessun dato ancora per questa classifica</p>
+            <p className="text-xs text-muted-foreground mt-1">Si aggiorna ogni notte in base all'attività reale della piattaforma</p>
+          </div>
+        )}
+
         {/* Top 3 Podium */}
         {leaderboardData.length >= 3 && (
           <div className="flex items-end justify-center gap-3 mb-6 h-44">

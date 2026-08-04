@@ -2083,6 +2083,6 @@ export function useStellaAgent() {
     toggleWakeWord, toggleTTS, toggleListening,
     sendTextCommand, confirmAction, cancelAction,
     repeatPending,
-    clearMessages,
+    clearMessages, addMessage,
   };
 }
