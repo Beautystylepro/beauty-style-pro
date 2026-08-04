@@ -21,9 +21,14 @@ export default function PostCardActions({ postType, postId, userId, userType, us
   const isJob = postType === "job";
   const isService = (postType === "service" || userType === "professional" || userType === "business") && userType !== "client";
   const isProduct = postType === "product";
+  // Prima "Contatta su WhatsApp" compariva SOLO sotto post etichettati
+  // esplicitamente come lavoro/servizio/prodotto — un post normale
+  // (foto, prima/dopo, ecc.) di un professionista non lo mostrava mai,
+  // anche se ha senso poter contattarlo comunque.
+  const canContact = isJob || isService || isProduct || userType === "professional" || userType === "business";
 
   useEffect(() => {
-    if (isJob || isService || isProduct) {
+    if (canContact) {
       supabase.from("profiles").select("phone, display_name").eq("user_id", userId).maybeSingle()
         .then(({ data }) => {
           if (data?.phone) setPhone(data.phone);
@@ -31,7 +36,7 @@ export default function PostCardActions({ postType, postId, userId, userType, us
         });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, isJob, isService, isProduct]);
+  }, [userId, canContact]);
 
   const goAuth = () => { if (!user) { navigate("/auth"); return true; } return false; };
 
@@ -68,7 +73,7 @@ export default function PostCardActions({ postType, postId, userId, userType, us
           <ShoppingBag className="w-3 h-3" /> Acquista
         </button>
       )}
-      {(isJob || isService || isProduct) && (
+      {canContact && (
         <>
           <button type="button" onClick={() => { if (goAuth()) return; navigate(`/chat`); }}
             aria-label="Apri chat" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-muted text-foreground text-xs font-semibold">

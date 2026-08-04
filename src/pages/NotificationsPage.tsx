@@ -89,13 +89,34 @@ export default function NotificationsPage() {
     const type = notification.type || "info";
     const data = notification.data || {};
 
-    if ((type === "like" || type === "comment") && data.post_id) {
-      navigate(`/?post=${data.post_id}`);
-    } else if (type === "message" && data.conversation_id) navigate(`/chat/${data.conversation_id}`);
-    else if (type === "follow" && data.follower_id) navigate(`/profile/${data.follower_id}`);
-    else if (type === "booking") navigate("/my-bookings");
-    else if (type === "tip") navigate("/wallet");
-    else if (type === "challenge") navigate("/challenges");
+    // BUG FIX: solo 7 tipi venivano gestiti, senza nessun ripiego per
+    // tutti gli altri tipi reali usati nell'app (pagamenti, prelievi,
+    // riattivazione clienti, promemoria, abbonamenti, ecc.) — cliccare
+    // quelle notifiche non faceva letteralmente nulla, senza errore
+    // visibile. Ora ogni tipo reale ha una destinazione sensata, e chi
+    // non è esplicitamente mappato ricade comunque su un posto utile
+    // invece di restare inerte.
+    if ((type === "like" || type === "comment") && data.post_id) { navigate(`/?post=${data.post_id}`); return; }
+    if (type === "message" && data.conversation_id) { navigate(`/chat/${data.conversation_id}`); return; }
+    if (type === "follow" && data.follower_id) { navigate(`/profile/${data.follower_id}`); return; }
+    if (type === "booking" || type === "booking_reminder" || type === "reactivation" || type === "empty_slots_alert") { navigate("/my-bookings"); return; }
+    if (type === "tip" || type === "transfer" || type === "qrcoin_transfer" || type === "coins" || type === "spin_win" || type === "earn" || type === "spend") { navigate("/wallet"); return; }
+    if (type === "payment" || type === "withdraw" || type === "withdrawal" || type === "bank_transfer") { navigate("/receipts"); return; }
+    if (type === "challenge") { navigate("/challenges"); return; }
+    if (type === "subscription" || type === "upsell") { navigate("/subscriptions"); return; }
+    if (type === "referral") { navigate("/referral"); return; }
+    if (type === "reminder" || type === "business_reminder" || type === "daily_digest" || type === "ai_digest") { navigate("/reminders"); return; }
+    if (type === "boost" || type === "growth" || type === "ai_growth" || type === "matching" || type === "ai_suggestion") { navigate("/analytics"); return; }
+    if (type === "product") { navigate("/manage-products"); return; }
+    if (type === "welcome" || type === "onboarding") { navigate("/"); return; }
+    if (type === "job" || type === "ai_job") { navigate("/hr"); return; }
+    if (type === "auto_discount" || type === "engagement") { navigate("/marketing"); return; }
+
+    // Ripiego finale: se la notifica porta un route esplicito nei dati
+    // (alcune Edge Function lo includono già), usalo; altrimenti vai
+    // almeno alla home invece di restare fermi senza fare nulla.
+    if (typeof data.route === "string" && data.route.startsWith("/")) { navigate(data.route); return; }
+    navigate("/");
   };
 
   const getActionLabel = (type: string) => {

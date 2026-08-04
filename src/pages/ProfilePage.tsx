@@ -17,6 +17,7 @@ import beauty1 from "@/assets/beauty-1.jpg";
 import beauty2 from "@/assets/beauty-2.jpg";
 import beauty3 from "@/assets/beauty-3.jpg";
 import { toast } from "sonner";
+import WhatsAppButton from "@/components/WhatsAppButton";
 
 interface ProfilePost {
   id: string;
@@ -330,16 +331,13 @@ export default function ProfilePage() {
                 className="flex-1 py-2 rounded-lg bg-primary/10 text-primary text-sm font-semibold">
                 Messaggio
               </button>
-              <button
-                onClick={() => {
-                  const phone = viewProfile?.phone || "";
-                  const name = viewProfile?.display_name || "professionista";
-                  const msg = encodeURIComponent(`Ciao ${name}! Ti ho trovato su STYLE e vorrei prenotare un servizio.`);
-                  window.open(phone ? `https://wa.me/${phone.replace(/\D/g, "")}?text=${msg}` : `https://wa.me/?text=${msg}`, "_blank");
-                }}
-                className="w-10 h-10 rounded-lg bg-green-600 flex items-center justify-center shrink-0">
-                <Phone className="w-4 h-4 text-primary-foreground" />
-              </button>
+              <WhatsAppButton
+                userId={viewUserId || ""}
+                name={viewProfile?.display_name || "professionista"}
+                context="stylist"
+                compact
+                className="w-10 h-10 rounded-lg bg-green-600 flex items-center justify-center shrink-0 [&_svg]:text-white"
+              />
               <button onClick={() => navigate(`/booking/${viewUserId}`)}
                 className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">
                 Prenota
