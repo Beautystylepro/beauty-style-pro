@@ -236,58 +236,46 @@ export function useStellaAgent() {
 
   useEffect(() => () => clearWakeWordResumeTimeout(), [clearWakeWordResumeTimeout]);
 
-  // Auto-start wake word listening on mount (once) — but ONLY when
-  // microphone permission is already granted. Previously this always
-  // silently attempted getUserMedia 800ms after mount with no user
-  // gesture at all: on a first visit (or after a permission was ever
-  // denied), the browser's permission prompt either appears
-  // unexpectedly and gets missed/dismissed, or isn't shown again at
-  // all after a prior denial — wake word then silently never starts,
-  // with a misleading "Stella is listening" toast regardless. Now: if
-  // permission isn't already granted, we surface a real, tappable
-  // prompt (needsMicPermissionPrompt) instead of guessing.
+  // Auto-start wake word listening on mount (once). Attempts the real
+  // browser microphone request directly — this shows the BROWSER's own
+  // native "Allow microphone?" prompt automatically, no extra tap on
+  // anything of ours required first. The only case where we ask for an
+  // explicit tap is if this automatic attempt actually gets denied
+  // (some browsers won't show a prompt again after a prior denial
+  // without a fresh user gesture) — that's a real browser security
+  // limit, not something any app code can bypass.
   const wakeWordStartedRef = useRef(false);
   const [needsMicPermissionPrompt, setNeedsMicPermissionPrompt] = useState(false);
   useEffect(() => {
     if (!isSupported || !wakeWordActive || wakeWordStartedRef.current) return;
     if (isWakeWordListening || isListening) return;
 
-    let cancelled = false;
-    (async () => {
-      let granted = false;
+    wakeWordStartedRef.current = true;
+    window.setTimeout(async () => {
       try {
         if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
           const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-          granted = status.state === 'granted';
-        }
-      } catch {
-        // Permissions API unsupported (e.g. Safari) — fall back to
-        // showing the explicit prompt rather than guessing blind.
-        granted = false;
-      }
-      if (cancelled) return;
-
-      if (granted) {
-        wakeWordStartedRef.current = true;
-        window.setTimeout(() => startWakeWordListening(), 800);
-        try {
-          const KEY = 'stella_wake_hint_shown_v1';
-          if (!window.localStorage.getItem(KEY)) {
-            window.setTimeout(() => {
-              toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', { duration: 6000 });
-              try { window.localStorage.setItem(KEY, '1'); } catch { /* best-effort, ignore */ }
-            }, 1500);
+          if (status.state === 'denied') {
+            // A prior denial means the browser won't show its prompt
+            // again without a fresh user gesture — this is the one
+            // real case that needs an explicit tap.
+            setNeedsMicPermissionPrompt(true);
+            return;
           }
-        } catch { /* best-effort, ignore */ }
-      } else {
-        // Real, visible action required — a genuine tap satisfies the
-        // browser's permission-prompt expectations properly and makes
-        // the request a conscious moment instead of a silent surprise.
-        setNeedsMicPermissionPrompt(true);
-      }
-    })();
+        }
+      } catch { /* Permissions API unsupported — attempt anyway below */ }
 
-    return () => { cancelled = true; };
+      startWakeWordListening();
+      try {
+        const KEY = 'stella_wake_hint_shown_v1';
+        if (!window.localStorage.getItem(KEY)) {
+          window.setTimeout(() => {
+            toast.success('🌟 Stella è in ascolto — dì "Stella" + comando da qualsiasi pagina', { duration: 6000 });
+            try { window.localStorage.setItem(KEY, '1'); } catch { /* best-effort, ignore */ }
+          }, 1500);
+        }
+      } catch { /* best-effort, ignore */ }
+    }, 800);
   }, [isSupported, wakeWordActive]); // minimal deps to avoid re-trigger loops
 
   const enableWakeWordNow = useCallback(() => {
