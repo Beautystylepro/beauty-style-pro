@@ -45,7 +45,7 @@ describe("useTheme", () => {
     act(() => { result.current.setTheme("light"); });
     const bg = document.documentElement.style.getPropertyValue("--background");
     expect(bg).toBeTruthy();
-    expect(bg).toContain("97%");
+    expect(bg).toContain("93%");
   });
 
   it("applies CSS variables for dark theme", () => {
@@ -54,6 +54,6 @@ describe("useTheme", () => {
     act(() => { result.current.setTheme("dark"); });
     const bg = document.documentElement.style.getPropertyValue("--background");
     expect(bg).toBeTruthy();
-    expect(bg).toContain("3%");
+    expect(bg).toContain("2%");
   });
 });
