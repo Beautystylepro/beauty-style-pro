@@ -607,13 +607,19 @@ export const useVoiceRecognition = (
               }
             }
 
-            const liveAvgConf = liveConfCount ? liveConfSum / liveConfCount : 0;
-            const finalAvgConf = finalConfCount ? finalConfSum / finalConfCount : 0;
-
-            // Discard noisy chunks
-            if (liveAvgConf < MIN_WAKE_CONFIDENCE && finalAvgConf < MIN_WAKE_CONFIDENCE) {
-              return;
-            }
+            // BUG FIX: previously discarded any result below a 0.6
+            // confidence threshold — Chrome's SpeechRecognition
+            // confidence scores are well known to be unreliable, often
+            // reporting 0 or very low values for INTERIM results even
+            // when the transcript itself is accurate (Chrome mostly
+            // only computes meaningful confidence for final results,
+            // and inconsistently even then). That silently discarded
+            // essentially every wake-word attempt on affected setups,
+            // with zero visible error — "Ehi Stella" simply never
+            // triggered anything. Confidence is no longer used to
+            // gate processing at all; the wake-word text match itself
+            // (checked below) is what decides whether to react.
+            void liveConfSum; void liveConfCount; void finalConfSum; void finalConfCount; void MIN_WAKE_CONFIDENCE;
 
             const currentTranscript = liveText.toLowerCase();
             const finalTranscript = finalText.toLowerCase();
