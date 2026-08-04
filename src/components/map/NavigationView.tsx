@@ -96,7 +96,7 @@ export default function NavigationView({ destination: initialDestination, startC
       : [startCenter.lat, startCenter.lng];
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed inset-0 z-[2000] bg-background flex flex-col">
       <div className="relative flex-1">
         <InteractiveMap
           center={mapCenter}
@@ -115,7 +115,7 @@ export default function NavigationView({ destination: initialDestination, startC
 
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 w-11 h-11 rounded-full bg-background shadow-lg flex items-center justify-center z-[1000]"
+          className="absolute top-4 right-4 w-11 h-11 rounded-full bg-background shadow-lg flex items-center justify-center z-[2010]"
           aria-label="Chiudi navigazione"
         >
           <X className="w-5 h-5" />
@@ -123,7 +123,7 @@ export default function NavigationView({ destination: initialDestination, startC
 
         <button
           onClick={() => setShowAddressSearch(v => !v)}
-          className="absolute top-4 left-4 right-16 h-11 rounded-full bg-background shadow-lg flex items-center gap-2 px-4 text-sm text-muted-foreground z-[1000]"
+          className="absolute top-4 left-4 right-16 h-11 rounded-full bg-background shadow-lg flex items-center gap-2 px-4 text-sm text-muted-foreground z-[2010]"
           aria-label="Cerca un altro indirizzo"
         >
           <Search className="w-4 h-4 shrink-0" />
@@ -131,7 +131,7 @@ export default function NavigationView({ destination: initialDestination, startC
         </button>
 
         {showAddressSearch && (
-          <div className="absolute top-[62px] left-4 right-16 bg-background rounded-2xl shadow-xl z-[1000] overflow-hidden">
+          <div className="absolute top-[62px] left-4 right-16 bg-background rounded-2xl shadow-xl z-[2010] overflow-hidden">
             <input
               autoFocus
               value={addressQuery}
@@ -155,7 +155,7 @@ export default function NavigationView({ destination: initialDestination, startC
         )}
 
         {gpsError && (
-          <div className="absolute top-4 left-4 right-16 bg-destructive/90 text-destructive-foreground text-xs rounded-xl px-3 py-2 flex items-center gap-2 z-[1000]">
+          <div className="absolute top-4 left-4 right-16 bg-destructive/90 text-destructive-foreground text-xs rounded-xl px-3 py-2 flex items-center gap-2 z-[2010]">
             <AlertTriangle className="w-4 h-4 shrink-0" /> {gpsError}
           </div>
         )}

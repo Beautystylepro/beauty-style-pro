@@ -1,6 +1,7 @@
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 declare global {
   interface Window {
@@ -80,7 +81,17 @@ export const useVoiceRecognition = (
     }
   })();
 
-  const isSupported = isWebSpeechSupported || isNativeSpeechSupported;
+  // BUG FIX: isSupported previously only checked for native browser/OS
+  // speech recognition — on browsers without it (Firefox, some mobile
+  // browsers), the mic button was fully disabled with no way to speak a
+  // command at all. It's now also true when generic microphone recording
+  // is available (virtually universal), since startListening has a
+  // working Gemini-based fallback for that case. Wake-word ("Hey Stella"
+  // always listening) still genuinely requires native support and is
+  // gated separately where it's used.
+  const isMicRecordingAvailable = typeof window !== 'undefined' &&
+    typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+  const isSupported = isWebSpeechSupported || isNativeSpeechSupported || isMicRecordingAvailable;
   const permissionDeniedMessage = 'Per attivare Stella consenti l’accesso al microfono nelle impostazioni del dispositivo o del browser.';
 
   const clearWakeWordCommandTimeout = useCallback(() => {
@@ -228,7 +239,57 @@ export const useVoiceRecognition = (
   }, [clearWakeWordCommandTimeout, isNativeSpeechSupported, stopNativeRecognition, stopWakeWordRecognitionInstance]);
 
   const startListening = useCallback(() => {
-    if (!isSupported) return;
+    if (!isSupported) {
+      // BUG FIX: previously this silently did nothing on browsers/devices
+      // without native SpeechRecognition (e.g. Firefox, some mobile
+      // browsers) — the mic button appeared to do nothing at all, with no
+      // error and no fallback. Record a short clip and transcribe it via
+      // Gemini instead (the same robust approach already used for calls),
+      // so the manual "tap to speak" mic works everywhere with a
+      // microphone, regardless of browser support for the Web Speech API.
+      void (async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          setIsListening(true);
+          isListeningRef.current = true;
+          setError(null);
+          setTranscript('');
+
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+          const recorder = new MediaRecorder(stream, { mimeType });
+          const chunks: BlobPart[] = [];
+          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = async () => {
+            stream.getTracks().forEach((t) => t.stop());
+            setIsListening(false);
+            isListeningRef.current = false;
+            const blob = new Blob(chunks, { type: mimeType });
+            if (blob.size < 2000) return;
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+              const audioBase64 = String(reader.result).split(',')[1] || '';
+              const { data, error: fnError } = await supabase.functions.invoke('voice-transcribe', {
+                body: { audioBase64, mimeType },
+              });
+              const spokenText: string = (data?.transcript || '').trim();
+              if (fnError || !spokenText) {
+                setError('Non sono riuscita a capire, riprova.');
+                return;
+              }
+              setTranscript(spokenText);
+            };
+            reader.readAsDataURL(blob);
+          };
+          recorder.start();
+          window.setTimeout(() => { try { recorder.stop(); } catch { /* already stopped */ } }, 5000);
+        } catch {
+          setError(permissionDeniedMessage);
+          setIsListening(false);
+          isListeningRef.current = false;
+        }
+      })();
+      return;
+    }
 
     if (isNativeSpeechSupported) {
       void (async () => {
@@ -391,6 +452,12 @@ export const useVoiceRecognition = (
   const startWakeWordListening = useCallback(() => {
     if (!isSupported || !wakeWordEnabled) return;
     if (isListeningRef.current) return;
+    // Wake-word (always-listening "Hey Stella") genuinely needs a real
+    // continuous speech recognition API — the Gemini fallback records a
+    // fixed short clip on demand and can't reasonably power passive
+    // always-on listening. Skip silently rather than crashing on
+    // browsers that only have generic mic recording available.
+    if (!isNativeSpeechSupported && !isWebSpeechSupported) return;
 
     if (isNativeSpeechSupported) {
       void (async () => {
