@@ -19,6 +19,7 @@ import ApplauseAnimation, { useApplause } from "@/components/live/ApplauseAnimat
 import VoiceNoteButton from "@/components/live/VoiceNoteButton";
 import ReportDialog from "@/components/ReportDialog";
 import { toast } from "sonner";
+import { useLiveBroadcaster, useLiveViewer } from "@/hooks/useLiveBroadcast";
 
 interface LiveStream {
   id: string;
@@ -33,7 +34,7 @@ interface LiveStream {
   qr_coin_pool?: number;
   interaction_goal?: number;
   is_public?: boolean;
-  professional?: { id: string; business_name: string; rating: number | null };
+  professional?: { id: string; user_id?: string; business_name: string; rating: number | null };
 }
 
 interface ChatMessage {
@@ -87,6 +88,27 @@ export default function LiveStreamPage() {
   const [interactionScore, setInteractionScore] = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [showPostStats, setShowPostStats] = useState(false);
+
+  // Video reale della diretta (WebRTC) — prima al posto della fotocamera
+  // c'era solo un'immagine statica. Chi è il proprietario della diretta
+  // trasmette la propria fotocamera; chiunque altro la riceve in tempo
+  // reale come spettatore.
+  const isBroadcaster = !!selectedStream && !!user && selectedStream.professional?.user_id === user.id;
+  const { localStream: broadcastLocalStream, viewerCount: liveViewerCount, error: broadcastError } =
+    useLiveBroadcaster(selectedStream?.id || null, isBroadcaster);
+  const { remoteStream: viewerRemoteStream, connecting: viewerConnecting } =
+    useLiveViewer(selectedStream?.id || null, selectedStream?.professional?.user_id || null, !!selectedStream && !isBroadcaster);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (localVideoRef.current && broadcastLocalStream) localVideoRef.current.srcObject = broadcastLocalStream;
+  }, [broadcastLocalStream]);
+  useEffect(() => {
+    if (remoteVideoRef.current && viewerRemoteStream) remoteVideoRef.current.srcObject = viewerRemoteStream;
+  }, [viewerRemoteStream]);
+  useEffect(() => {
+    if (broadcastError) toast.error(broadcastError);
+  }, [broadcastError]);
   const [isModerator, setIsModerator] = useState(false);
   const [showGuestPanel, setShowGuestPanel] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
@@ -223,7 +245,7 @@ export default function LiveStreamPage() {
     setLoading(true);
     const { data } = await supabase
       .from('live_streams')
-      .select(`*, professional:professionals(id, business_name, rating)`)
+      .select(`*, professional:professionals(id, user_id, business_name, rating)`)
       .in('status', ['live', 'scheduled'])
       .order('viewer_count', { ascending: false });
 
@@ -309,7 +331,20 @@ export default function LiveStreamPage() {
       <MobileLayout>
         <div className="relative min-h-screen bg-background">
           <div className="absolute inset-0">
-            <img src={selectedStream.thumbnail_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800'} alt="" className="w-full h-full object-cover" />
+            {isBroadcaster ? (
+              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            ) : viewerRemoteStream ? (
+              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+            ) : (
+              <>
+                <img src={selectedStream.thumbnail_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800'} alt="" className="w-full h-full object-cover" />
+                {viewerConnecting && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <p className="text-white text-sm font-semibold">Connessione al video in corso...</p>
+                  </div>
+                )}
+              </>
+            )}
             <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-transparent to-background/95" />
           </div>
 
