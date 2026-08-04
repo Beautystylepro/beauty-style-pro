@@ -61,6 +61,8 @@ export default function ShopPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [shareProduct, setShareProduct] = useState<Product | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [viewProduct, setViewProduct] = useState<Product | null>(null);
+  const [viewSeller, setViewSeller] = useState<{ display_name: string; avatar_url: string | null } | null>(null);
   const [reviewText, setReviewText] = useState("");
 
   const qrCoins = profile?.qr_coins || 0;
@@ -117,6 +119,16 @@ export default function ShopPage() {
     const discount = appliedPromo ? (product.price * appliedPromo.discount / 100) : 0;
     const finalPrice = product.price - discount;
     navigate(`/checkout?amount=${finalPrice.toFixed(2)}&desc=${encodeURIComponent(product.name)}&type=product&ref=${product.id}`);
+  };
+
+  const openProductDetail = async (product: Product) => {
+    setViewProduct(product);
+    setViewSeller(null);
+    const sellerId = (product as any).seller_id;
+    if (sellerId) {
+      const { data } = await supabase.from("profiles").select("display_name, avatar_url").eq("user_id", sellerId).maybeSingle();
+      if (data) setViewSeller(data as any);
+    }
   };
 
   const applyPromoCode = async () => {
@@ -264,15 +276,15 @@ export default function ShopPage() {
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Scopri i Prodotti</h3>
                     <div className="grid grid-cols-2 gap-3">
                       {filteredProducts.map((product, idx) => (
-                        <div key={product.id} className="rounded-xl bg-card overflow-hidden border border-border/50">
+                        <div key={product.id} onClick={() => openProductDetail(product)} className="rounded-xl bg-card overflow-hidden border border-border/50 cursor-pointer hover:border-primary/40 transition-colors">
                           <div className="relative">
                             <img src={getImage(product, idx)} alt={product.name} className="w-full aspect-square object-cover" />
                             <div className="absolute top-2 right-2 flex flex-col gap-1.5">
-                              <button onClick={() => toggleLike(product.id)}
+                              <button onClick={(e) => { e.stopPropagation(); toggleLike(product.id); }}
                                 className="w-8 h-8 rounded-full glass flex items-center justify-center">
                                 <Heart className={`w-4 h-4 ${likedProducts.includes(product.id) ? "text-primary fill-primary" : "text-foreground"}`} />
                               </button>
-                              <button onClick={() => setShareProduct(product)}
+                              <button onClick={(e) => { e.stopPropagation(); setShareProduct(product); }}
                                 className="w-8 h-8 rounded-full glass flex items-center justify-center">
                                 <Share2 className="w-4 h-4 text-foreground" />
                               </button>
@@ -288,18 +300,18 @@ export default function ShopPage() {
                               </span>
                             </div>
                             <div className="flex gap-1.5 mt-2">
-                              <button onClick={() => addToCart(product.id)} className="flex-1 py-1.5 rounded-lg bg-muted text-xs font-semibold hover:bg-muted/80 transition-all flex items-center justify-center gap-1">
+                              <button onClick={(e) => { e.stopPropagation(); addToCart(product.id); }} className="flex-1 py-1.5 rounded-lg bg-muted text-xs font-semibold hover:bg-muted/80 transition-all flex items-center justify-center gap-1">
                                 <ShoppingCart className="w-3 h-3" /> Carrello
                               </button>
-                              <button onClick={() => buyNow(product)} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold">
+                              <button onClick={(e) => { e.stopPropagation(); buyNow(product); }} className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold">
                                 Acquista
                               </button>
                             </div>
-                            <button onClick={() => navigate("/ai-look")}
+                            <button onClick={(e) => { e.stopPropagation(); navigate("/ai-look"); }}
                               className="w-full mt-1.5 py-1.5 rounded-lg bg-primary/10 text-xs font-semibold text-primary flex items-center justify-center gap-1 hover:bg-primary/20 transition-all">
                               <Wand2 className="w-3 h-3" /> Prova Look AI
                             </button>
-                            <button onClick={() => setSelectedProduct(product)}
+                            <button onClick={(e) => { e.stopPropagation(); setSelectedProduct(product); }}
                               className="w-full mt-1 py-1.5 rounded-lg border border-border/50 text-xs font-medium text-muted-foreground flex items-center justify-center gap-1 hover:bg-muted/50 transition-all">
                               <MessageCircle className="w-3 h-3" /> Recensione
                             </button>
@@ -471,6 +483,50 @@ export default function ShopPage() {
           </div>
         )}
       </div>
+
+      {viewProduct && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-background/60 backdrop-blur-sm" onClick={() => setViewProduct(null)}>
+          <div className="w-full max-w-lg bg-card rounded-t-3xl border-t border-border/50 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full bg-muted mx-auto mt-3 mb-1" />
+            <img src={viewProduct.image_url || "https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800"} alt={viewProduct.name} className="w-full aspect-video object-cover" />
+            <div className="p-5 pb-8 space-y-3">
+              <div>
+                <h3 className="font-display font-bold text-lg">{viewProduct.name}</h3>
+                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 fill-accent text-accent" /> {viewProduct.rating || 4.5} ({(viewProduct as any).review_count || 0} recensioni)</span>
+                  {(viewProduct as any).category && <span>· {(viewProduct as any).category}</span>}
+                </div>
+              </div>
+
+              {viewProduct.description && <p className="text-sm text-muted-foreground">{viewProduct.description}</p>}
+
+              {viewSeller && (
+                <button onClick={() => { setViewProduct(null); navigate(`/profile/${(viewProduct as any).seller_id}`); }}
+                  className="flex items-center gap-2 p-2 rounded-xl bg-muted/50 w-full text-left">
+                  <img src={viewSeller.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${(viewProduct as any).seller_id}`} alt="" className="w-8 h-8 rounded-full object-cover" />
+                  <span className="text-xs font-semibold">Venduto da {viewSeller.display_name}</span>
+                </button>
+              )}
+
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-primary">€{viewProduct.price}</span>
+                {typeof (viewProduct as any).stock === "number" && (
+                  <span className="text-xs text-muted-foreground">{(viewProduct as any).stock > 0 ? `${(viewProduct as any).stock} disponibili` : "Esaurito"}</span>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => { addToCart(viewProduct.id); setViewProduct(null); }} className="flex-1 py-3 rounded-xl bg-muted text-sm font-semibold flex items-center justify-center gap-1.5">
+                  <ShoppingCart className="w-4 h-4" /> Carrello
+                </button>
+                <button onClick={() => { setViewProduct(null); buyNow(viewProduct); }} className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-bold">
+                  Acquista ora
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {shareProduct && (
         <ShareMenu
