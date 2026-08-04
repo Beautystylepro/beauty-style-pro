@@ -81,6 +81,7 @@ serve(async (req) => {
             currency,
             product_data: { name: description || "Pagamento Beauty Style Pro" },
             unit_amount: Math.round(Number(amount)),
+            ...(mode === "subscription" ? { recurring: { interval: "month" as const } } : {}),
           },
           quantity: 1,
         }];

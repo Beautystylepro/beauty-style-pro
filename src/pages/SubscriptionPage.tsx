@@ -12,6 +12,9 @@ const PLAN_ICONS: Record<string, any> = {
   pro: Zap,
   business: Rocket,
   premium: Crown,
+  client_5: Zap,
+  client_10: Rocket,
+  client_unlimited: Crown,
 };
 
 const PLAN_COLORS: Record<string, string> = {
@@ -19,6 +22,9 @@ const PLAN_COLORS: Record<string, string> = {
   pro: "border-primary/60",
   business: "border-primary",
   premium: "border-yellow-500 ring-2 ring-yellow-500/20",
+  client_5: "border-primary/60",
+  client_10: "border-primary",
+  client_unlimited: "border-yellow-500 ring-2 ring-yellow-500/20",
 };
 
 const PLANS_CONFIG = [
@@ -48,11 +54,46 @@ const PLANS_CONFIG = [
   },
 ];
 
+// Piani per i CLIENTI: prima vedevano gli stessi piani pensati per
+// professionisti ("Gestione team", "API access", "Dashboard analytics"
+// — nessun senso per chi prenota soltanto). Basati su quante
+// prenotazioni al mese si scelgono, non su funzioni da professionista.
+const CLIENT_PLANS_CONFIG = [
+  {
+    slug: "free",
+    name: "Free",
+    price: 0,
+    bookingsPerMonth: 3,
+    features: ["3 prenotazioni al mese", "Ricerca professionisti", "Chat base"],
+  },
+  {
+    slug: "client_5",
+    name: "Plus",
+    price: 4.99,
+    bookingsPerMonth: 8,
+    features: ["8 prenotazioni al mese", "Priorità in agenda", "Promemoria automatici"],
+  },
+  {
+    slug: "client_10",
+    name: "Gold",
+    price: 8.99,
+    bookingsPerMonth: 20,
+    features: ["20 prenotazioni al mese", "Priorità in agenda", "Sconti esclusivi partner", "Supporto prioritario"],
+  },
+  {
+    slug: "client_unlimited",
+    name: "Unlimited",
+    price: 14.99,
+    bookingsPerMonth: null,
+    features: ["Prenotazioni illimitate", "Priorità massima in agenda", "Sconti esclusivi partner", "Supporto 24/7", "QR Coins bonus mensili"],
+  },
+];
+
 export default function SubscriptionPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [currentPlan, setCurrentPlan] = useState<StripePlanKey | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null);
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
@@ -94,18 +135,25 @@ export default function SubscriptionPage() {
     return () => clearInterval(interval);
   }, [checkSubscription]);
 
+  const isClientProfile = profile?.user_type === "client" || !profile?.user_type;
+  const activePlans = isClientProfile ? CLIENT_PLANS_CONFIG : PLANS_CONFIG;
+
   const subscribe = async (slug: string) => {
     if (!user) { navigate("/auth"); return; }
     if (slug === "free") return;
 
-    const stripePlan = STRIPE_PLANS[slug as StripePlanKey];
-    if (!stripePlan) return;
-
     setLoading(slug);
     try {
-      const { data, error } = await supabase.functions.invoke("create-checkout", {
-        body: { priceId: stripePlan.price_id, mode: "subscription" },
-      });
+      // Client plans (client_5, client_10, client_unlimited) have no
+      // pre-created Stripe Price — they use ad-hoc recurring pricing
+      // instead, since no professional-tier product exists for these.
+      const clientPlan = CLIENT_PLANS_CONFIG.find((p) => p.slug === slug);
+      const body = clientPlan
+        ? { mode: "subscription", amount: Math.round(clientPlan.price * 100), description: `Abbonamento ${clientPlan.name} — ${clientPlan.bookingsPerMonth ?? "prenotazioni illimitate"}`, refType: "client_subscription", refId: slug }
+        : { priceId: STRIPE_PLANS[slug as StripePlanKey]?.price_id, mode: "subscription" };
+      if (!clientPlan && !STRIPE_PLANS[slug as StripePlanKey]) { setLoading(null); return; }
+
+      const { data, error } = await supabase.functions.invoke("create-checkout", { body });
 
       if (error) throw error;
       if (data?.url) {
@@ -171,7 +219,7 @@ export default function SubscriptionPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {PLANS_CONFIG.map((plan) => {
+            {activePlans.map((plan) => {
               const Icon = PLAN_ICONS[plan.slug] || Star;
               const isCurrent = currentPlan === plan.slug;
 
