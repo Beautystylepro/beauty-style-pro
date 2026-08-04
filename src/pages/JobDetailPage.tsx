@@ -15,6 +15,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [generatingLetter, setGeneratingLetter] = useState(false);
   const [showApplyForm, setShowApplyForm] = useState(false);
   const [alreadyApplied, setAlreadyApplied] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -49,6 +50,27 @@ export default function JobDetailPage() {
       await supabase.from("job_posts").update({ view_count: (data.view_count || 0) + 1 }).eq("id", id!);
     }
     setLoading(false);
+  };
+
+  const handleGenerateCoverLetter = async () => {
+    if (!job) return;
+    setGeneratingLetter(true);
+    const { data, error } = await supabase.functions.invoke("generate-cover-letter", {
+      body: {
+        jobTitle: job.title,
+        jobDescription: job.description,
+        companyName: employerName,
+        candidateName: profile?.display_name,
+        candidateBio: profile?.bio,
+        candidateSkills: (profile as any)?.interests?.join?.(", "),
+      },
+    });
+    setGeneratingLetter(false);
+    if (error || data?.error) {
+      toast.error("Errore nella generazione, riprova");
+      return;
+    }
+    setCoverLetter(data.coverLetter || "");
   };
 
   const handleApply = async () => {
@@ -237,7 +259,17 @@ export default function JobDetailPage() {
         {/* Apply form */}
         {showApplyForm && !alreadyApplied && (
           <div className="p-4 rounded-2xl bg-card border border-primary/30 space-y-3">
-            <h3 className="font-semibold text-sm">La tua candidatura</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">La tua candidatura</h3>
+              <button
+                type="button"
+                onClick={handleGenerateCoverLetter}
+                disabled={generatingLetter}
+                className="flex items-center gap-1 text-xs font-semibold text-primary disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> {generatingLetter ? "Scrivo..." : "Suggerisci con AI"}
+              </button>
+            </div>
             <textarea
               value={coverLetter}
               onChange={(e) => setCoverLetter(e.target.value)}
