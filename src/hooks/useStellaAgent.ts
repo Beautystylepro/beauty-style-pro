@@ -1692,6 +1692,37 @@ export function useStellaAgent() {
       const topActions = patterns.slice(0, 5).map(p => `${p.action}(${p.count}x)`).join(', ');
       const topPages = getTopPages().slice(0, 3).join(', ');
 
+      // "DNA beauty" reale: prima Stella imparava solo COME usi l'app
+      // (quali pagine visiti, a che ora) — non le tue PREFERENZE beauty
+      // vere (che servizi prenoti di più, quali professionisti scegli).
+      // Senza questo, non poteva dare consigli davvero personalizzati
+      // su tagli/trattamenti/promozioni, solo suggerimenti generici a
+      // template. Ora legge le prenotazioni completate reali.
+      let beautyProfile = 'nessuna prenotazione ancora';
+      if (user) {
+        const { data: history } = await supabase
+          .from('bookings')
+          .select('service:services(name, category), professional:professionals(business_name), booking_date')
+          .eq('client_id', user.id)
+          .eq('status', 'completed')
+          .order('booking_date', { ascending: false })
+          .limit(20);
+        if (history?.length) {
+          const categoryCounts: Record<string, number> = {};
+          const proCounts: Record<string, number> = {};
+          for (const h of history as any[]) {
+            const cat = h.service?.category;
+            const pro = h.professional?.business_name;
+            if (cat) categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+            if (pro) proCounts[pro] = (proCounts[pro] || 0) + 1;
+          }
+          const topCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
+          const topPros = Object.entries(proCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([p]) => p);
+          const daysSinceLast = Math.floor((Date.now() - new Date((history[0] as any).booking_date).getTime()) / 86400000);
+          beautyProfile = `${history.length} prenotazioni completate, categorie preferite: ${topCategories.join(', ') || 'varie'}, professionisti preferiti: ${topPros.join(', ') || 'vari'}, ultima visita ${daysSinceLast} giorni fa`;
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('stella-intent', {
         body: {
           text,
@@ -1704,6 +1735,7 @@ export function useStellaAgent() {
             current_page: window.location.pathname,
             frequent_actions: topActions || 'none',
             favorite_pages: topPages || 'none',
+            beauty_profile: beautyProfile,
           },
         },
       });
