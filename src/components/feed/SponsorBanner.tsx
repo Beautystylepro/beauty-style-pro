@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ExternalLink, Megaphone } from "lucide-react";
 
@@ -13,10 +13,22 @@ interface AdCampaign {
 
 export default function SponsorBanner() {
   const [ad, setAd] = useState<AdCampaign | null>(null);
+  const impressionTrackedRef = useRef(false);
 
   useEffect(() => {
     loadAd();
   }, []);
+
+  // Track the impression once, the first time this ad is actually shown
+  // to a viewer — this is what makes the campaign's budget real (it was
+  // previously only decremented by clicks, which almost never fired due
+  // to the RLS bug below, so budgets never actually depleted).
+  useEffect(() => {
+    if (ad && !impressionTrackedRef.current) {
+      impressionTrackedRef.current = true;
+      void supabase.rpc("record_ad_impression", { _campaign_id: ad.id });
+    }
+  }, [ad]);
 
   const loadAd = async () => {
     const { data } = await supabase
@@ -30,7 +42,14 @@ export default function SponsorBanner() {
 
   const trackClick = async () => {
     if (!ad) return;
-    try { await supabase.from("ad_campaigns").update({ clicks: (ad as any).clicks + 1 }).eq("id", ad.id); } catch { /* Intentionally ignored: click tracking is non-critical */ }
+    // Previously: a direct .update({ clicks: ad.clicks + 1 }) from the
+    // client — RLS only allows an advertiser to update their OWN
+    // campaign, so a real viewer's click was silently rejected every
+    // time (it "worked" only if the viewer happened to be the ad's own
+    // owner). A SECURITY DEFINER RPC lets any viewer register a click
+    // on someone else's campaign safely, without granting broader
+    // write access to the campaign itself.
+    void supabase.rpc("record_ad_click", { _campaign_id: ad.id });
     if (ad.target_url) window.open(ad.target_url, "_blank", "noopener");
   };
 

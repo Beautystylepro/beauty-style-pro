@@ -94,6 +94,10 @@ const BusinessTeamPage = lazy(() => import("./pages/BusinessTeamPage"));
 const EmployeeShiftsPage = lazy(() => import("./pages/EmployeeShiftsPage"));
 const EmployeeActivityPage = lazy(() => import("./pages/EmployeeActivityPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const AcademyPage = lazy(() => import("./pages/AcademyPage"));
+const CourseDetailPage = lazy(() => import("./pages/CourseDetailPage"));
+const CreateCoursePage = lazy(() => import("./pages/CreateCoursePage"));
+const AdsManagerPage = lazy(() => import("./pages/AdsManagerPage"));
 const CompleteProfilePage = lazy(() => import("./pages/CompleteProfilePage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const DebugPanelPage = lazy(() => import("./pages/DebugPanelPage"));
@@ -255,6 +259,10 @@ const App = () => {
             <Route path="/tenant" element={<P><TenantDashboardPage /></P>} />
             <Route path="/debug" element={<P><DebugPanelPage /></P>} />
             <Route path="/complete-profile" element={<P><CompleteProfilePage /></P>} />
+            <Route path="/academy" element={<P><AcademyPage /></P>} />
+            <Route path="/academy/create" element={<P><CreateCoursePage /></P>} />
+            <Route path="/academy/:id" element={<P><CourseDetailPage /></P>} />
+            <Route path="/ads-manager" element={<P><AdsManagerPage /></P>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>

@@ -1,4 +1,4 @@
-import { Search, Bell, MessageCircle, Plus, Play, Eye, Heart, Share2, Bookmark, Coins, Briefcase, MapPin, Star, Users, Video, ShoppingBag, ChevronRight, Scissors, CalendarDays, Map as MapIcon, Home, Target, Sparkles, Film, Gift, Trophy, Camera, Radio, Medal, Podcast, Droplets, Zap, Gamepad2, Wand2, Sun, Moon, Globe, BarChart3, Layout } from "lucide-react";
+import { Search, Bell, MessageCircle, Plus, Play, Eye, Heart, Share2, Bookmark, Coins, Briefcase, MapPin, Star, Users, Video, ShoppingBag, ChevronRight, Scissors, CalendarDays, Map as MapIcon, Home, Target, Sparkles, Film, Gift, Trophy, Camera, Radio, Medal, Podcast, Droplets, Zap, Gamepad2, Wand2, Sun, Moon, Globe, BarChart3, Layout, GraduationCap } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import HomeMusicWidget from "@/components/feed/HomeMusicWidget";
 import TrendingClips from "@/components/feed/TrendingClips";
@@ -199,6 +199,8 @@ export default function HomePage() {
             { Icon: MapIcon, label: "Mappa", path: "/map-search" },
             { Icon: Droplets, label: "Spa", path: "/spa-terme" },
             { Icon: Home, label: "Domicilio", path: "/map-search?home=1" },
+            { Icon: GraduationCap, label: "Academy", path: "/academy" },
+            { Icon: Zap, label: "Pubblicità", path: "/ads-manager" },
             { Icon: Target, label: "Missioni", path: "/missions" },
             { Icon: Zap, label: "Quiz", path: "/quiz-live" },
             { Icon: Gamepad2, label: "Talent", path: "/talent-game" },
