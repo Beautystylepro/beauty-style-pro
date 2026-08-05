@@ -262,6 +262,16 @@ export function useWebRTCCall() {
       toast.error("Hai già una chiamata in corso");
       return;
     }
+    // BUG TROVATO: statusRef veniva aggiornato solo da un effetto,
+    // con un ritardo di un giro di rendering rispetto a setStatus().
+    // Un doppio tocco rapido sul pulsante chiamata poteva passare
+    // ENTRAMBE le volte questo controllo, prima che il primo tentativo
+    // avesse il tempo di aggiornare statusRef — la seconda chiamata
+    // chiudeva la connessione della prima proprio mentre stava
+    // preparando l'offerta video, causando l'errore
+    // "signalingState is 'closed'" riportato. Aggiornato subito, non
+    // in ritardo.
+    statusRef.current = "ringing-out";
 
     try {
       const callId = crypto.randomUUID();
@@ -295,6 +305,12 @@ export function useWebRTCCall() {
 
   const acceptCall = useCallback(async () => {
     if (!incoming || !user) return;
+    // Stessa protezione contro il doppio tocco applicata a startCall:
+    // senza questo controllo, toccare "Accetta" due volte molto
+    // velocemente poteva avviare due tentativi di connessione in
+    // conflitto tra loro.
+    if (statusRef.current !== "ringing-in") return;
+    statusRef.current = "connecting";
 
     try {
       const { callId, fromUser, kind } = incoming;
