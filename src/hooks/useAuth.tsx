@@ -144,6 +144,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })(),
       },
     });
+
+    // Supabase, per non rivelare quali email sono registrate, risponde
+    // "200 OK" anche quando l'indirizzo ESISTE GIA' — ma non crea nulla
+    // e non invia nessuna email. L'app mostrava comunque "controlla la
+    // tua email", lasciando l'utente ad aspettare per sempre un
+    // messaggio che non sarebbe mai arrivato. Il segnale che Supabase
+    // usa per questo caso e' un utente restituito con "identities"
+    // vuoto: lo intercettiamo e diciamo la verita'.
+    if (!error && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      return {
+        error: { message: "EMAIL_ALREADY_REGISTERED" } as any,
+        needsEmailVerification: false,
+      };
+    }
+
     return { error, needsEmailVerification: !data.session };
   };
 

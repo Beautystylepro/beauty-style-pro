@@ -213,7 +213,9 @@ export default function AuthPage() {
     
     if (error) { 
       // Handle duplicate email gracefully
-      if (error.message?.includes("already registered") || error.message?.includes("already been registered")) {
+      if (error.message === "EMAIL_ALREADY_REGISTERED") {
+        toast.error("Questa email è già registrata. Accedi con la password, oppure usa \"Continua con Google\" se ti eri iscritto così.", { duration: 8000 });
+      } else if (error.message?.includes("already registered") || error.message?.includes("already been registered")) {
         toast.error("Questa email è già registrata. Prova ad accedere.");
       } else {
         toast.error(error.message); 
