@@ -209,7 +209,22 @@ export default function AuthPage() {
     // Clean undefined values
     Object.keys(extraMeta).forEach(k => extraMeta[k] === undefined && delete extraMeta[k]);
 
-    const { error, needsEmailVerification } = await signUp(email, password, displayName, accountType, gender || undefined, colorTheme, extraMeta);
+    let error: any = null;
+    let needsEmailVerification = false;
+    try {
+      const res = await signUp(email, password, displayName, accountType, gender || undefined, colorTheme, extraMeta);
+      error = res.error;
+      needsEmailVerification = res.needsEmailVerification;
+    } catch (e: any) {
+      // Prima un'eccezione qui (rete caduta, richiesta bloccata, errore
+      // JS) non veniva mai catturata: il pulsante restava a girare
+      // all'infinito senza nessun messaggio, e nei log del server non
+      // compariva nulla perche' la richiesta non era mai partita.
+      console.error("[signup] eccezione:", e);
+      toast.error(`Errore tecnico: ${e?.message || e}`, { duration: 10000 });
+      setLoading(false);
+      return;
+    }
     
     if (error) { 
       // Handle duplicate email gracefully
