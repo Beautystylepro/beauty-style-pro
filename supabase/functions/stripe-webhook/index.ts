@@ -123,7 +123,7 @@ serve(async (req) => {
           await supabase.from("notifications").insert({
             user_id: userId,
             title: "Abbonamento Attivato ✅",
-            message: "Il tuo abbonamento STYLE è stato attivato con successo!",
+            message: "Il tuo abbonamento STYLE è attivo! Primo mese gratis — il pagamento partirà tra 30 giorni, disdici quando vuoi prima di allora senza costi.",
             type: "subscription",
           });
           logStep("Subscription notification sent");

@@ -241,6 +241,9 @@ export default function SubscriptionPage() {
                         {plan.price === 0 ? "Gratis" : `€${plan.price}`}
                         {plan.price > 0 && <span className="text-xs text-muted-foreground font-normal">/mese</span>}
                       </p>
+                      {plan.price > 0 && (
+                        <p className="text-[11px] font-semibold text-primary mt-0.5">🎁 Primo mese gratis, disdici quando vuoi</p>
+                      )}
                     </div>
                   </div>
 
@@ -273,7 +276,7 @@ export default function SubscriptionPage() {
                       {loading === plan.slug ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        currentPlan ? "Cambia Piano" : "Abbonati"
+                        currentPlan ? "Cambia Piano" : "Inizia gratis (30 giorni)"
                       )}
                     </button>
                   )}

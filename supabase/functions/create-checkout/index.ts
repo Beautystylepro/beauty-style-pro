@@ -94,6 +94,11 @@ serve(async (req) => {
       payment_method_types: mode === "subscription" ? ["card"] : paymentMethodTypes as Stripe.Checkout.SessionCreateParams.PaymentMethodType[],
       success_url: successUrl || `${origin}/subscriptions?success=true`,
       cancel_url: cancelUrl || `${origin}/subscriptions?cancelled=true`,
+      // Primo mese gratis stile Shopify: la carta viene verificata subito
+      // ma l'addebito vero parte solo dopo 30 giorni dall'iscrizione,
+      // per permettere a un'attività di provare l'app per davvero prima
+      // di pagare qualcosa.
+      ...(mode === "subscription" ? { subscription_data: { trial_period_days: 30 } } : {}),
       metadata: {
         user_id: user.id,
         ...(refId ? { ref_id: String(refId) } : {}),
