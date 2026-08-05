@@ -10,7 +10,7 @@ export default function AdminPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<"overview" | "users" | "payments" | "reports" | "verify">("overview");
+  const [tab, setTab] = useState<"overview" | "users" | "payments" | "reports" | "verify" | "team">("overview");
   const [stats, setStats] = useState({ users: 0, bookings: 0, professionals: 0, businesses: 0, posts: 0, products: 0, subscriptions: 0, boosts: 0, transactions: 0, totalQRC: 0 });
   const [recentUsers, setRecentUsers] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -23,6 +23,42 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [expandedVerify, setExpandedVerify] = useState<string | null>(null);
+  const [staff, setStaff] = useState<any[]>([]);
+  const [newStaffEmail, setNewStaffEmail] = useState("");
+  const [newStaffRole, setNewStaffRole] = useState<"admin" | "moderator">("moderator");
+  const [addingStaff, setAddingStaff] = useState(false);
+
+  const loadStaff = async () => {
+    const { data, error } = await supabase.rpc("admin_list_staff");
+    if (!error) setStaff(data || []);
+  };
+
+  const handleAddStaff = async () => {
+    if (!newStaffEmail.trim()) { toast.error("Inserisci un'email"); return; }
+    setAddingStaff(true);
+    const { data, error } = await supabase.rpc("admin_set_user_role", {
+      target_email: newStaffEmail.trim(),
+      new_role: newStaffRole,
+    });
+    setAddingStaff(false);
+    if (error || data?.error) {
+      toast.error(data?.error || "Errore nell'assegnazione");
+      return;
+    }
+    toast.success("Ruolo assegnato ✓");
+    setNewStaffEmail("");
+    loadStaff();
+  };
+
+  const handleRemoveStaff = async (email: string) => {
+    const { data, error } = await supabase.rpc("admin_set_user_role", { target_email: email, new_role: "user" });
+    if (error || data?.error) {
+      toast.error(data?.error || "Errore nella rimozione");
+      return;
+    }
+    toast.success("Rimosso dallo staff");
+    loadStaff();
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -33,6 +69,9 @@ export default function AdminPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (isAdmin) loadStats(); }, [tab, isAdmin]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isAdmin && tab === "team") loadStaff(); }, [tab, isAdmin]);
 
   if (isAdmin === null) {
     return (
@@ -226,6 +265,7 @@ export default function AdminPage() {
     { key: "payments" as const, label: "Pagamenti", Icon: Wallet },
     { key: "reports" as const, label: "Report", Icon: Flag },
     { key: "verify" as const, label: `Verifiche${pendingVerifications > 0 ? ` (${pendingVerifications})` : ''}`, Icon: FileCheck },
+    { key: "team" as const, label: "Team", Icon: ShieldCheck },
   ];
 
   return (
@@ -541,6 +581,70 @@ export default function AdminPage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === "team" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-card border border-border/50 p-4">
+              <h3 className="text-sm font-bold mb-3">Aggiungi collaboratore</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                La persona deve essersi già registrata sull'app con questa email — assegni solo il ruolo, non crei l'account.
+              </p>
+              <input
+                type="email"
+                value={newStaffEmail}
+                onChange={(e) => setNewStaffEmail(e.target.value)}
+                placeholder="email@esempio.com"
+                className="w-full h-11 px-3 rounded-xl border border-border/50 bg-background text-sm mb-2"
+              />
+              <div className="flex gap-2 mb-3">
+                <button
+                  onClick={() => setNewStaffRole("moderator")}
+                  className={`flex-1 h-10 rounded-lg text-xs font-semibold ${newStaffRole === "moderator" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                >
+                  Assistenza (moderator)
+                </button>
+                <button
+                  onClick={() => setNewStaffRole("admin")}
+                  className={`flex-1 h-10 rounded-lg text-xs font-semibold ${newStaffRole === "admin" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                >
+                  Admin completo
+                </button>
+              </div>
+              <button
+                onClick={handleAddStaff}
+                disabled={addingStaff}
+                className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+              >
+                {addingStaff ? "..." : "Assegna ruolo"}
+              </button>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold mb-2 px-1">Staff attuale</h3>
+              <div className="space-y-2">
+                {staff.length === 0 && <p className="text-xs text-muted-foreground px-1">Solo tu al momento.</p>}
+                {staff.map((s) => (
+                  <div key={s.user_id} className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">{s.display_name || s.email}</p>
+                      <p className="text-xs text-muted-foreground">{s.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${s.role === "admin" ? "bg-yellow-500/15 text-yellow-600" : "bg-primary/15 text-primary"}`}>
+                        {s.role === "admin" ? "Admin" : "Assistenza"}
+                      </span>
+                      {s.user_id !== user?.id && (
+                        <button onClick={() => handleRemoveStaff(s.email)} className="text-destructive text-xs font-semibold">
+                          Rimuovi
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
