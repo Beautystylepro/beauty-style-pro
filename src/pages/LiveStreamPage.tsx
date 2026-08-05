@@ -87,6 +87,30 @@ export default function LiveStreamPage() {
   const [showMusic, setShowMusic] = useState(false);
   const [interactionScore, setInteractionScore] = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+  const [isFollowingStreamer, setIsFollowingStreamer] = useState(false);
+
+  // Il pulsante "Segui" era decorativo: nessuna funzione reale, e
+  // compariva anche per chi guarda la PROPRIA diretta (segui te
+  // stesso). Corretto: nascosto per il proprietario, funzione vera.
+  useEffect(() => {
+    if (!user || !selectedStream?.professional?.user_id || isBroadcaster) { setIsFollowingStreamer(false); return; }
+    supabase.from("follows").select("id").eq("follower_id", user.id).eq("following_id", selectedStream.professional.user_id).maybeSingle()
+      .then(({ data }) => setIsFollowingStreamer(!!data));
+  }, [user, selectedStream?.professional?.user_id, isBroadcaster]);
+
+  const toggleFollowStreamer = async () => {
+    if (!user) { navigate("/auth"); return; }
+    const targetId = selectedStream?.professional?.user_id;
+    if (!targetId) return;
+    if (isFollowingStreamer) {
+      await supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", targetId);
+      setIsFollowingStreamer(false);
+    } else {
+      await supabase.from("follows").insert({ follower_id: user.id, following_id: targetId });
+      setIsFollowingStreamer(true);
+      toast.success("Ora segui questo professionista");
+    }
+  };
   const [showPostStats, setShowPostStats] = useState(false);
 
   // Video reale della diretta (WebRTC) — prima al posto della fotocamera
@@ -423,7 +447,14 @@ export default function LiveStreamPage() {
                   <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-bold capitalize">{selectedStream.category}</span>
                 )}
               </div>
-              <button className="px-4 py-2 rounded-full gradient-primary text-primary-foreground text-sm font-bold">Segui</button>
+              {!isBroadcaster && (
+                <button
+                  onClick={toggleFollowStreamer}
+                  className={`px-4 py-2 rounded-full text-sm font-bold ${isFollowingStreamer ? "bg-muted text-muted-foreground" : "gradient-primary text-primary-foreground"}`}
+                >
+                  {isFollowingStreamer ? "Segui già" : "Segui"}
+                </button>
+              )}
             </div>
 
             {earnedBadges.length > 0 && <div className="mt-2"><LiveBadges badges={earnedBadges} /></div>}

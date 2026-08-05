@@ -286,6 +286,30 @@ export function useStellaAgent() {
     try { window.localStorage.setItem('stella_wake_hint_shown_v1', '1'); } catch { /* best-effort, ignore */ }
   }, [startWakeWordListening]);
 
+  // BUG TROVATO: dopo un periodo di inattività, "Ehi Stella" smetteva
+  // di funzionare per sempre finché non si ricaricava la pagina. La
+  // causa: iOS e Android sospendono l'esecuzione del codice in
+  // background per risparmiare batteria — quando questo succede,
+  // l'ascolto vocale si interrompe, e nessun meccanismo lo faceva
+  // ripartire al ritorno sull'app. Ora, ogni volta che la pagina torna
+  // visibile (l'utente riapre l'app o ci torna sopra), controlla se
+  // "Ehi Stella" dovrebbe essere attivo ma non lo è davvero, e lo
+  // riattiva da solo.
+  useEffect(() => {
+    const handleVisibilityRecovery = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!isSupported || !wakeWordActive) return;
+      if (isWakeWordListening || isListening) return; // già in ascolto, nulla da fare
+      startWakeWordListening();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityRecovery);
+    window.addEventListener('focus', handleVisibilityRecovery);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityRecovery);
+      window.removeEventListener('focus', handleVisibilityRecovery);
+    };
+  }, [isSupported, wakeWordActive, isWakeWordListening, isListening, startWakeWordListening]);
+
   // Process transcript when command listening ends
   useEffect(() => {
     const finalTranscript = transcript.trim();
@@ -1799,7 +1823,7 @@ export function useStellaAgent() {
       setIsAIThinking(false);
       scheduleWakeWordResume(1800);
     }
-  }, [addMessage, stellaSpeak, profile, executeAIIntent, analyzePatterns, getTopPages, logStellaCommand, scheduleWakeWordResume, pushStep, completeStep, scheduleStepsClear]);
+  }, [addMessage, stellaSpeak, profile, user, executeAIIntent, analyzePatterns, getTopPages, logStellaCommand, scheduleWakeWordResume, pushStep, completeStep, scheduleStepsClear]);
 
 
 
