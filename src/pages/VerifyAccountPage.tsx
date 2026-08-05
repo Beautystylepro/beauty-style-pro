@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Upload, ShieldCheck, Camera, CreditCard, FileText, Building2, Briefcase, User, Store, Stethoscope, Scissors } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,6 +28,29 @@ export default function VerifyAccountPage() {
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState(profile?.user_type || "client");
   const [docType, setDocType] = useState("id_card");
+  const [existingRequest, setExistingRequest] = useState<any>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  // BUG TROVATO: se avevi già inviato una richiesta (in attesa o
+  // rifiutata), questa pagina mostrava sempre lo stesso modulo vuoto
+  // da compilare da capo, senza dire mai che avevi già inviato
+  // qualcosa — nessuna indicazione di "in attesa di revisione" o del
+  // motivo di un eventuale rifiuto. Da qui la confusione sul "come si
+  // fa la verifica". Ora controlla prima se esiste già una richiesta.
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("verification_requests")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setExistingRequest(data);
+        setCheckingExisting(false);
+      });
+  }, [user]);
   const [fullName, setFullName] = useState(profile?.display_name || "");
   const [address, setAddress] = useState(profile?.city || "");
   const [businessName, setBusinessName] = useState("");
@@ -102,6 +125,16 @@ export default function VerifyAccountPage() {
     navigate(-1);
   };
 
+  if (checkingExisting) {
+    return (
+      <MobileLayout>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </MobileLayout>
+    );
+  }
+
   if (isVerified) {
     return (
       <MobileLayout>
@@ -117,6 +150,64 @@ export default function VerifyAccountPage() {
             <h2 className="text-xl font-display font-bold mb-2">Account Verificato</h2>
             <p className="text-sm text-muted-foreground">Il tuo account è stato verificato con successo.</p>
           </div>
+        </div>
+      </MobileLayout>
+    );
+  }
+
+  if (existingRequest?.status === "pending") {
+    return (
+      <MobileLayout>
+        <header className="sticky top-0 z-40 glass px-5 py-3 flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-lg font-display font-bold">Verifica Account</h1>
+        </header>
+        <div className="px-5 py-6">
+          <div className="text-center py-12">
+            <div className="w-16 h-16 rounded-full bg-yellow-500/15 flex items-center justify-center mx-auto mb-4">
+              <ShieldCheck className="w-8 h-8 text-yellow-600" />
+            </div>
+            <h2 className="text-xl font-display font-bold mb-2">Richiesta in revisione</h2>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+              Hai già inviato una richiesta di verifica il {new Date(existingRequest.created_at).toLocaleDateString("it-IT")}.
+              Verrà controllata entro 24-48h — non serve inviarne un'altra.
+            </p>
+          </div>
+        </div>
+      </MobileLayout>
+    );
+  }
+
+  if (existingRequest?.status === "rejected") {
+    return (
+      <MobileLayout>
+        <header className="sticky top-0 z-40 glass px-5 py-3 flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-lg font-display font-bold">Verifica Account</h1>
+        </header>
+        <div className="px-5 py-6">
+          <div className="text-center py-8">
+            <div className="w-16 h-16 rounded-full bg-destructive/15 flex items-center justify-center mx-auto mb-4">
+              <ShieldCheck className="w-8 h-8 text-destructive" />
+            </div>
+            <h2 className="text-xl font-display font-bold mb-2">Richiesta non approvata</h2>
+            {(existingRequest.rejection_reason || existingRequest.admin_notes) && (
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-2">
+                Motivo: {existingRequest.rejection_reason || existingRequest.admin_notes}
+              </p>
+            )}
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">Puoi correggere e inviare una nuova richiesta.</p>
+          </div>
+          <button
+            onClick={() => setExistingRequest(null)}
+            className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm"
+          >
+            Invia una nuova richiesta
+          </button>
         </div>
       </MobileLayout>
     );
