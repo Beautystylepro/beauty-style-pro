@@ -14,6 +14,21 @@ export default function SettingsPage() {
   const { theme, setTheme, toggleTheme } = useTheme();
   const { colorTheme, setColorTheme } = useColorTheme();
   const [pushNotif, setPushNotif] = useState(true);
+  const [homeService, setHomeService] = useState(false);
+
+  useEffect(() => {
+    if (!user || profile?.user_type !== "professional") return;
+    supabase.from("professionals").select("home_service").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => setHomeService(!!data?.home_service));
+  }, [user, profile?.user_type]);
+
+  const toggleHomeService = async () => {
+    if (!user) return;
+    const next = !homeService;
+    setHomeService(next);
+    const { error } = await supabase.from("professionals").update({ home_service: next }).eq("user_id", user.id);
+    if (error) { setHomeService(!next); toast.error("Errore nel salvataggio"); }
+  };
   const [emailNotif, setEmailNotif] = useState(true);
   const [shareLocation, setShareLocation] = useState(false);
   const [searchDistance, setSearchDistance] = useState(25);
@@ -167,6 +182,16 @@ export default function SettingsPage() {
             </div>
 
             <SettingRow icon={MapPin} label={`Città: ${profile?.city || 'Non impostata'}`} onClick={() => navigate("/profile/edit")} />
+            {profile?.user_type === "professional" && (
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-card border border-border/50">
+                <Navigation className="w-4 h-4 text-primary" />
+                <div className="flex-1">
+                  <span className="text-sm block">Disponibile a domicilio</span>
+                  <span className="text-[11px] text-muted-foreground">Mostrato ai clienti che cercano professionisti a domicilio</span>
+                </div>
+                <Toggle value={homeService} onChange={toggleHomeService} />
+              </div>
+            )}
           </div>
         </section>
 

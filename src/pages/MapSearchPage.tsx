@@ -22,6 +22,7 @@ type Professional = {
   address: string | null;
   description: string | null;
   is_verified: boolean | null;
+  home_service?: boolean;
   avatar?: string;
   distance?: number;
   aiScore?: number;
@@ -94,7 +95,7 @@ export default function MapSearchPage() {
     // below, showing just a bare pin with the owner's personal name — no
     // real business name, specialty, or rating, unlike professionals.
     const { data } = await supabase.from("professionals")
-      .select("id, business_name, specialty, city, rating, review_count, hourly_rate, latitude, longitude, address, description, is_verified, user_id");
+      .select("id, business_name, specialty, city, rating, review_count, hourly_rate, latitude, longitude, address, description, is_verified, user_id, home_service");
 
     const { data: businessesData } = await supabase.from("businesses")
       .select("id, business_name, business_type, city, rating, review_count, latitude, longitude, address, description, verified, user_id, logo_url")
@@ -206,10 +207,13 @@ export default function MapSearchPage() {
         if (cityFilter && (p.city || "").toLowerCase() !== cityFilter.toLowerCase()) return false;
         if (specialtyFilter && (p.specialty || "").toLowerCase() !== specialtyFilter.toLowerCase()) return false;
         if (p.distance !== undefined && p.distance > maxDistance) return false;
+        // BUG TROVATO: il pulsante "a domicilio" esisteva già
+        // nell'interfaccia ma non filtrava mai nulla — decorativo.
+        if (homeService && !p.home_service) return false;
         return true;
       })
       .sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
-  }, [professionalsWithDistance, search, cityFilter, specialtyFilter, maxDistance]);
+  }, [professionalsWithDistance, search, cityFilter, specialtyFilter, maxDistance, homeService]);
 
   // Build map markers — multi-type
   const mapMarkers: MapMarker[] = useMemo(() => {
@@ -462,6 +466,12 @@ export default function MapSearchPage() {
                   <span className="text-xs font-semibold text-primary">{p.distance} km</span>
                   <span className="text-xs text-muted-foreground">·</span>
                   <span className="text-xs text-emerald-500 font-medium">Disponibile</span>
+                  {p.home_service && (
+                    <>
+                      <span className="text-xs text-muted-foreground">·</span>
+                      <span className="text-xs text-primary font-medium flex items-center gap-0.5"><Home className="w-3 h-3" /> A domicilio</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="text-right flex flex-col items-end gap-1">
