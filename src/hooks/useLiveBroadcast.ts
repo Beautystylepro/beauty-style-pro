@@ -16,6 +16,9 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 export function useLiveBroadcaster(streamId: string | null, active: boolean) {
@@ -137,9 +140,17 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcRef.current = pc;
 
+    // Se dopo 25 secondi non è ancora arrivato nessun video, smette di
+    // dire "connessione in corso" — evita di restare bloccati su un
+    // messaggio fuorviante per sempre se la connessione non riesce.
+    const hardTimeout = window.setTimeout(() => {
+      if (!cancelled) setConnecting(false);
+    }, 25000);
+
     pc.ontrack = (e) => {
       if (!cancelled) setRemoteStream(e.streams[0]);
       setConnecting(false);
+      clearTimeout(hardTimeout);
     };
 
     pc.onicecandidate = (e) => {
@@ -196,6 +207,7 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
 
     return () => {
       cancelled = true;
+      clearTimeout(hardTimeout);
       if (joinRetryRef.current) { clearInterval(joinRetryRef.current); joinRetryRef.current = null; }
       void supabase.from("call_signals").insert({
         call_id: streamId, from_user: user.id, to_user: broadcasterId,

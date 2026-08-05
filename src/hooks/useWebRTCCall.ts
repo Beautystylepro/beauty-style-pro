@@ -14,10 +14,20 @@ export interface IncomingCall {
   kind: CallKind;
 }
 
+// BUG TROVATO: prima c'erano solo server STUN, nessun server TURN.
+// STUN aiuta a scoprire il proprio indirizzo pubblico, ma su reti
+// mobili (molto comuni in Italia) o wifi con restrizioni, una
+// connessione diretta tra due telefoni spesso non si riesce proprio a
+// stabilire — serve un server TURN che faccia da tramite. Senza,
+// la chiamata resta bloccata su "Connessione..." per sempre, senza
+// nessun errore visibile (circa 1 chiamata su 4-5 ne ha bisogno).
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 interface SignalRow {
@@ -138,6 +148,21 @@ export function useWebRTCCall() {
   const createPeer = useCallback((toUser: string, callId: string, kind: CallKind) => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
+    // BUG TROVATO: se la negoziazione della connessione non riusciva
+    // MAI a concludersi (né "connesso" né "fallito" — capita quando
+    // nessun percorso di rete funziona), la chiamata restava bloccata
+    // su "Connessione..." per sempre, senza alcun avviso. Ora, se non
+    // si connette entro 25 secondi, si ferma da sola con un messaggio
+    // chiaro invece di restare appesa.
+    const hardTimeout = window.setTimeout(() => {
+      if (pc.connectionState !== "connected") {
+        toast.error("Connessione non riuscita. Controlla la rete e riprova.");
+        cleanupPeer();
+        resetCallState();
+      }
+    }, 25000);
+    (pc as any)._hardTimeout = hardTimeout;
+
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         void sendSignal("ice", toUser, event.candidate.toJSON(), kind, callId);
@@ -151,6 +176,7 @@ export function useWebRTCCall() {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
+        clearTimeout((pc as any)._hardTimeout);
         if (disconnectTimerRef.current) {
           clearTimeout(disconnectTimerRef.current);
           disconnectTimerRef.current = null;
@@ -167,6 +193,10 @@ export function useWebRTCCall() {
           }, 8000);
         }
       } else if (["failed", "closed"].includes(pc.connectionState)) {
+        clearTimeout((pc as any)._hardTimeout);
+        if (pc.connectionState === "failed") {
+          toast.error("Connessione non riuscita. Controlla la rete e riprova.");
+        }
         cleanupPeer();
         resetCallState();
       }
