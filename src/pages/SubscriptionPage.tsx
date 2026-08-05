@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import MobileLayout from "@/components/layout/MobileLayout";
 import { Check, Crown, Rocket, Star, Zap, ArrowLeft, Loader2, Settings } from "lucide-react";
 import { toast } from "sonner";
-import { STRIPE_PLANS, getPlanByProductId, type StripePlanKey } from "@/lib/stripe";
+import { STRIPE_PLANS, type StripePlanKey } from "@/lib/stripe";
 
 const PLAN_ICONS: Record<string, any> = {
   free: Star,
@@ -113,11 +113,22 @@ export default function SubscriptionPage() {
   const checkSubscription = useCallback(async () => {
     if (!user) { setChecking(false); return; }
     try {
-      const { data, error } = await supabase.functions.invoke("check-subscription");
+      // BUG TROVATO: prima si affidava a "check-subscription", una
+      // funzione server che dipende da Stripe e falliva regolarmente
+      // (errore 500) — la pagina non mostrava mai correttamente il
+      // piano attuale, nemmeno per chi aveva davvero pagato. Ora legge
+      // direttamente dalla tabella reale, la stessa fonte affidabile
+      // usata anche per sbloccare le funzioni riservate agli abbonati.
+      const { data, error } = await supabase
+        .from("user_subscriptions")
+        .select("status, expires_at, subscription_plans(slug)")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle();
       if (error) throw error;
-      if (data?.subscribed && data?.product_id) {
-        setCurrentPlan(getPlanByProductId(data.product_id));
-        setSubscriptionEnd(data.subscription_end);
+      if (data) {
+        setCurrentPlan((data as any).subscription_plans?.slug || null);
+        setSubscriptionEnd(data.expires_at);
       } else {
         setCurrentPlan(null);
         setSubscriptionEnd(null);
@@ -149,8 +160,8 @@ export default function SubscriptionPage() {
       // instead, since no professional-tier product exists for these.
       const clientPlan = CLIENT_PLANS_CONFIG.find((p) => p.slug === slug);
       const body = clientPlan
-        ? { mode: "subscription", amount: Math.round(clientPlan.price * 100), description: `Abbonamento ${clientPlan.name} — ${clientPlan.bookingsPerMonth ?? "prenotazioni illimitate"}`, refType: "client_subscription", refId: slug }
-        : { priceId: STRIPE_PLANS[slug as StripePlanKey]?.price_id, mode: "subscription" };
+        ? { mode: "subscription", amount: Math.round(clientPlan.price * 100), description: `Abbonamento ${clientPlan.name} — ${clientPlan.bookingsPerMonth ?? "prenotazioni illimitate"}`, refType: "subscription", refId: slug }
+        : { priceId: STRIPE_PLANS[slug as StripePlanKey]?.price_id, mode: "subscription", refType: "subscription", refId: slug };
       if (!clientPlan && !STRIPE_PLANS[slug as StripePlanKey]) { setLoading(null); return; }
 
       const { data, error } = await supabase.functions.invoke("create-checkout", { body });

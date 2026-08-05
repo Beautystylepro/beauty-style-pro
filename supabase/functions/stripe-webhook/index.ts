@@ -119,6 +119,30 @@ serve(async (req) => {
         }
 
         if (userId && session.mode === "subscription") {
+          // BUG CRITICO: prima si mandava solo una notifica di conferma,
+          // senza MAI scrivere l'abbonamento nella tabella reale — chi
+          // pagava risultava comunque "non abbonato" per qualsiasi
+          // controllo funzionale in tutta l'app (traduzione chiamate,
+          // funzioni riservate, ecc.). Ora scrive davvero.
+          const planSlug = session.metadata?.ref_type === "subscription" ? session.metadata?.ref_id : null;
+          if (planSlug) {
+            const { data: plan } = await supabase.from("subscription_plans").select("id").eq("slug", planSlug).maybeSingle();
+            if (plan) {
+              await supabase.from("user_subscriptions").upsert({
+                user_id: userId,
+                plan_id: plan.id,
+                status: "active",
+                is_trial: true,
+                started_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                payment_method: "stripe",
+              }, { onConflict: "user_id" });
+              logStep("Subscription written to user_subscriptions", { userId, planSlug });
+            } else {
+              logStep("Plan slug not found in subscription_plans", { planSlug });
+            }
+          }
+
           // Create notification for subscription
           await supabase.from("notifications").insert({
             user_id: userId,
@@ -162,7 +186,24 @@ serve(async (req) => {
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Subscription cancelled", { subId: subscription.id });
-        // Notification handled by check-subscription polling
+        // BUG TROVATO: la cancellazione non aggiornava mai lo stato
+        // reale — chi disdiceva avrebbe mantenuto l'accesso alle
+        // funzioni riservate per sempre. Corretto: risale al cliente
+        // Stripe, trova l'utente tramite email, e disattiva davvero.
+        try {
+          const customer = await stripe.customers.retrieve(subscription.customer as string);
+          const email = !("deleted" in customer) ? customer.email : null;
+          if (email) {
+            const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+            const matchedUser = authUsers?.users.find((u: any) => u.email === email);
+            if (matchedUser) {
+              await supabase.from("user_subscriptions").update({ status: "cancelled" }).eq("user_id", matchedUser.id);
+              logStep("Subscription marked cancelled in user_subscriptions", { userId: matchedUser.id });
+            }
+          }
+        } catch (e) {
+          logStep("Error updating cancelled subscription", { error: String(e) });
+        }
         break;
       }
 
