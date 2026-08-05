@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import MobileLayout from "@/components/layout/MobileLayout";
+import { isValidItalianVAT } from "@/lib/validateVAT";
 
 const DOC_TYPES = [
   { key: "id_card", label: "Carta d'Identità", Icon: CreditCard },
@@ -24,7 +25,7 @@ const ACCOUNT_TYPES = [
 
 export default function VerifyAccountPage() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [accountType, setAccountType] = useState(profile?.user_type || "client");
   const [docType, setDocType] = useState("id_card");
@@ -85,6 +86,12 @@ export default function VerifyAccountPage() {
     if (!fullName.trim()) { toast.error("Inserisci il nome completo"); return; }
     if (files.length === 0) { toast.error("Carica almeno un documento d'identità"); return; }
     if (isTrueBusiness && !vatNumber.trim()) { toast.error("Inserisci la Partita IVA"); return; }
+    // Verifica automatica e istantanea della Partita IVA (algoritmo di
+    // controllo ufficiale) — nessuna attesa necessaria per questo dato.
+    if (vatNumber.trim() && !isValidItalianVAT(vatNumber)) {
+      toast.error("Partita IVA non valida — controlla le 11 cifre inserite");
+      return;
+    }
 
     setSubmitting(true);
     const docUrls: string[] = [];
@@ -102,7 +109,7 @@ export default function VerifyAccountPage() {
       if (!error) licUrls.push(path);
     }
 
-    const { error } = await supabase.from("verification_requests").insert({
+    const { data: inserted, error } = await supabase.from("verification_requests").insert({
       user_id: user.id,
       verification_type: isBusiness ? "business" : "identity",
       account_type: accountType,
@@ -117,11 +124,31 @@ export default function VerifyAccountPage() {
       city: city || null,
       phone: phone || null,
       email: email || null,
-    });
+    }).select("id").single();
 
+    if (error || !inserted) {
+      setSubmitting(false);
+      toast.error("Errore nell'invio");
+      return;
+    }
+
+    // Il documento lo verifica Stella (Claude, visione reale) al posto
+    // dell'attesa di 24-48h di un controllo umano. Solo nei casi
+    // genuinamente dubbi (foto poco chiara, nome non corrispondente)
+    // resta comunque una rete di sicurezza umana, come prima.
+    const { data: aiResult, error: aiError } = await supabase.functions.invoke("verify-document-ai", {
+      body: { requestId: inserted.id, fullName, docType },
+    });
     setSubmitting(false);
-    if (error) { toast.error("Errore nell'invio"); return; }
-    toast.success("Richiesta inviata! Verrà verificata entro 24-48h.");
+
+    if (!aiError && aiResult?.autoApproved) {
+      toast.success("Documento verificato automaticamente da Stella! Account verificato ✓");
+      await refreshProfile();
+      navigate(-1);
+      return;
+    }
+
+    toast.success("Richiesta inviata! Il documento non è risultato chiaramente verificabile in automatico — verrà controllato manualmente entro 24-48h.");
     navigate(-1);
   };
 
@@ -294,8 +321,18 @@ export default function VerifyAccountPage() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold mb-1.5 block">Partita IVA {isTrueBusiness ? "*" : "(facoltativa)"}</label>
-                  <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="IT12345678901"
-                    className="w-full h-12 rounded-xl bg-card border border-border/50 px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  <div className="relative">
+                    <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="IT12345678901"
+                      className="w-full h-12 rounded-xl bg-card border border-border/50 px-4 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                    {vatNumber.trim() && (
+                      <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${isValidItalianVAT(vatNumber) ? "text-primary" : "text-destructive"}`}>
+                        {isValidItalianVAT(vatNumber) ? "✓" : "✕"}
+                      </span>
+                    )}
+                  </div>
+                  {vatNumber.trim() && !isValidItalianVAT(vatNumber) && (
+                    <p className="text-[11px] text-destructive mt-1">Numero non valido — verificato automaticamente, controlla le cifre.</p>
+                  )}
                   {!isTrueBusiness && (
                     <p className="text-[11px] text-muted-foreground mt-1">Se lavori a domicilio o in mobilità senza Partita IVA, puoi lasciare vuoto.</p>
                   )}
