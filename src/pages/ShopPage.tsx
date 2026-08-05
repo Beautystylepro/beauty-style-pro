@@ -263,18 +263,6 @@ export default function ShopPage() {
             {/* ===== PRODUCTS ===== */}
             {activeSection === "products" && (
               <div className="space-y-4 fade-in">
-                <div className="rounded-2xl overflow-hidden relative aspect-[2/1]">
-                  <img src={beauty2} alt="Prodotto in evidenza" className="absolute inset-0 w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-background/90 to-transparent flex items-center px-5">
-                    <div>
-                      <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-bold">Prodotto Top</span>
-                      <h3 className="text-lg font-display font-bold mt-2">Cosmohairr Beam</h3>
-                      <p className="text-xs text-muted-foreground">Max Mascolini</p>
-                      <p className="text-lg font-bold text-primary mt-1">€39.99</p>
-                    </div>
-                  </div>
-                </div>
-
                 {filteredProducts.length === 0 ? (
                   <div className="text-center py-12">
                     <ShoppingBag className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -424,7 +412,7 @@ export default function ShopPage() {
                   </div>
                 ) : (
                   [...filteredProducts].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 6).map((product, idx) => (
-                    <div key={product.id} className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50">
+                    <div key={product.id} onClick={() => openProductDetail(product)} className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50 cursor-pointer hover:border-primary/40 transition-colors">
                       <div className="relative">
                         <img src={getImage(product, idx)} alt="" className="w-20 h-20 rounded-xl object-cover" />
                         <span className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center">#{idx + 1}</span>
@@ -441,10 +429,10 @@ export default function ShopPage() {
                         <p className="text-sm font-bold text-primary mt-1">€{product.price}</p>
                       </div>
                       <div className="flex flex-col gap-1.5 shrink-0">
-                        <button onClick={() => buyNow(product)} className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold">
+                        <button onClick={(e) => { e.stopPropagation(); buyNow(product); }} className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold">
                           Acquista
                         </button>
-                        <button onClick={() => toggleLike(product.id)} className="px-3 py-2 rounded-xl bg-muted text-xs font-semibold flex items-center justify-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); toggleLike(product.id); }} className="px-3 py-2 rounded-xl bg-muted text-xs font-semibold flex items-center justify-center gap-1">
                           <Heart className={`w-3 h-3 ${likedProducts.includes(product.id) ? "fill-primary text-primary" : ""}`} />
                         </button>
                       </div>

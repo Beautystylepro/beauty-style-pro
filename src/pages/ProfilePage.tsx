@@ -327,7 +327,7 @@ export default function ProfilePage() {
                 }`}>
                 {isFollowing ? "Segui già" : "Segui"}
               </button>
-              <button onClick={() => navigate("/chat")}
+              <button onClick={() => navigate(`/chat?startWith=${viewUserId}`)}
                 className="flex-1 py-2 rounded-lg bg-primary/10 text-primary text-sm font-semibold">
                 Messaggio
               </button>

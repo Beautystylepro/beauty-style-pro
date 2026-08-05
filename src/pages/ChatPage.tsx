@@ -3,7 +3,7 @@ import { ArrowLeft, Send, Image, Phone, Video, Search, Mic, MicOff, Paperclip, P
 import AutoMessageSuggestions from "@/components/chat/AutoMessageSuggestions";
 import { useTranslation } from "@/hooks/useTranslation";
 import { usePresenceTracker, isUserOnline, formatLastSeen } from "@/hooks/usePresence";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCall } from "@/contexts/CallContext";
@@ -51,6 +51,7 @@ const fallbackAvatars = [stylist2, stylist1, beauty2];
 export default function ChatPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -98,6 +99,56 @@ export default function ChatPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, conversations]);
+
+  // BUG TROVATO: il pulsante "Messaggio" sul profilo di un utente
+  // portava alla lista generale delle chat invece di aprire subito la
+  // conversazione con QUELLA persona — a differenza di Instagram, dove
+  // "Messaggio" apre direttamente la chat. Questo effetto gestisce il
+  // parametro ?startWith=ID_UTENTE passato dal profilo: trova la
+  // conversazione già esistente, o ne crea una nuova, e la apre subito.
+  useEffect(() => {
+    const startWithUserId = searchParams.get("startWith");
+    if (!startWithUserId || !user || startWithUserId === user.id) return;
+
+    (async () => {
+      const existing = conversations.find(c => c.otherUserId === startWithUserId);
+      if (existing) {
+        setSelectedChat(existing);
+        loadMessages(existing.id);
+        navigate(`/chat/${existing.id}`, { replace: true });
+        return;
+      }
+
+      const { data: targetProfile } = await supabase
+        .from("profiles")
+        .select("user_id, display_name, avatar_url")
+        .eq("user_id", startWithUserId)
+        .maybeSingle();
+      if (!targetProfile) return;
+
+      const { data: newConv, error } = await supabase.from("conversations").insert({
+        participant_1: user.id,
+        participant_2: startWithUserId,
+      }).select().single();
+      if (error || !newConv) return;
+
+      const conv: Conversation = {
+        id: newConv.id,
+        name: targetProfile.display_name || "Utente",
+        avatar: targetProfile.avatar_url || fallbackAvatars[0],
+        lastMessage: "Nessun messaggio",
+        time: "",
+        unread: 0,
+        online: false,
+        lastSeen: null,
+        otherUserId: startWithUserId,
+      };
+      setConversations(prev => [conv, ...prev]);
+      setSelectedChat(conv);
+      navigate(`/chat/${conv.id}`, { replace: true });
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, user, conversations.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
