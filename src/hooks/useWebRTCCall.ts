@@ -313,25 +313,53 @@ export function useWebRTCCall() {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
       setIncoming(null);
 
+      // BUG TROVATO: chi trasmette manda "ringing" e SOLO DOPO manda
+      // l'offerta video vera e propria (due invii separati, non uno
+      // solo). Se chi risponde tocca "Accetta" molto velocemente,
+      // l'offerta potrebbe non essere ancora arrivata quando viene
+      // creata la connessione qui sopra.
+      //
+      // Il codice già gestiva un percorso alternativo altrove (dentro
+      // handleSignal): se l'offerta arriva DOPO che la connessione
+      // esiste già, la applica e risponde da sola. Il bug era che QUI
+      // si andava comunque dritti a creare una risposta senza offerta,
+      // fallendo subito con un errore — anche se l'offerta sarebbe
+      // arrivata un istante dopo e sarebbe stata gestita correttamente
+      // dall'altro percorso. Ora, se l'offerta non è ancora arrivata,
+      // ci si ferma qui e si lascia che l'altro percorso completi la
+      // connessione da solo, con un limite di sicurezza di 15 secondi.
       if (pendingOfferRef.current) {
         await pc.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
         pendingOfferRef.current = null;
+
+        for (const candidate of pendingIceRef.current) {
+          try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
+        }
+        pendingIceRef.current = [];
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendSignal("accept", fromUser, null, kind, callId);
+        await sendSignal("answer", fromUser, { sdp: answer.sdp, type: answer.type }, kind, callId);
+      } else {
+        await sendSignal("accept", fromUser, null, kind, callId);
+        // Limite di sicurezza: se dopo 15s l'offerta non è mai arrivata
+        // e la connessione non si è mai stabilita, avvisa invece di
+        // restare bloccati su "connessione..." per sempre.
+        setTimeout(() => {
+          if (callIdRef.current === callId && statusRef.current === "connecting") {
+            toast.error("Connessione non riuscita, riprova");
+            cleanupPeer();
+            resetCallState();
+          }
+        }, 15000);
       }
 
-      for (const candidate of pendingIceRef.current) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
-      }
-      pendingIceRef.current = [];
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await sendSignal("accept", fromUser, null, kind, callId);
-      await sendSignal("answer", fromUser, { sdp: answer.sdp, type: answer.type }, kind, callId);
     } catch (error: any) {
       toast.error(error?.message || "Impossibile accettare la chiamata");
       await endCall(true);
     }
-  }, [createPeer, endCall, getMedia, incoming, sendSignal, stopRingtone, user]);
+  }, [cleanupPeer, createPeer, endCall, getMedia, incoming, resetCallState, sendSignal, stopRingtone, user]);
 
   const rejectCall = useCallback(async () => {
     if (!incoming) return;
@@ -407,6 +435,15 @@ export function useWebRTCCall() {
           }
 
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+          // Eventuali candidati ICE arrivati PRIMA che l'offerta fosse
+          // applicata restavano bloccati in coda per sempre — questo
+          // percorso non li svuotava mai, a differenza dell'altro.
+          for (const candidate of pendingIceRef.current) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch { /* best-effort, ignore */ }
+          }
+          pendingIceRef.current = [];
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await sendSignal("answer", signal.from_user, { sdp: answer.sdp, type: answer.type }, (signal.call_kind as CallKind) || "video", signal.call_id);
