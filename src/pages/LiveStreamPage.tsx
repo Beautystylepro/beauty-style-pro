@@ -170,6 +170,32 @@ export default function LiveStreamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStream?.id]);
 
+  // BUG FIX: i cuori/reazioni venivano salvati davvero nel database
+  // (stream_reactions) ma nessuno li trasmetteva in tempo reale agli
+  // altri — comparivano solo sullo schermo di chi li mandava, mai a
+  // chi guardava la stessa diretta dall'altra parte. Stesso identico
+  // meccanismo già funzionante per la chat, applicato qui.
+  useEffect(() => {
+    if (!selectedStream) return;
+    const channel = supabase
+      .channel(`live-reactions-${selectedStream.id}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "stream_reactions",
+        filter: `stream_id=eq.${selectedStream.id}`,
+      }, (payload) => {
+        const reaction = payload.new as any;
+        if (reaction.user_id === user?.id) return; // già mostrata localmente
+        const id = Date.now() + Math.random();
+        setFloatingReactions(prev => [...prev, { id, emoji: reaction.reaction_type, x: 20 + Math.random() * 60 }]);
+        setTimeout(() => setFloatingReactions(prev => prev.filter(r => r.id !== id)), 2500);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStream?.id]);
+
   // Auto-earn + badge checks
   useEffect(() => {
     if (selectedStream) {

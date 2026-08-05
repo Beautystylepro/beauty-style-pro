@@ -40,7 +40,13 @@ export default function VerifyAccountPage() {
   const [licenseFiles, setLicenseFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const isBusiness = ["business", "clinic", "brand", "professional"].includes(accountType);
+  // Prima "isBusiness" includeva anche "professional", rendendo la
+  // Partita IVA obbligatoria per QUALSIASI professionista — ma esistono
+  // professionisti a domicilio/mobili senza P.IVA. Separato: solo le
+  // vere attività commerciali (business/clinic/brand) la richiedono
+  // davvero; per i professionisti resta un campo facoltativo.
+  const isTrueBusiness = ["business", "clinic", "brand"].includes(accountType);
+  const isBusiness = [...["business", "clinic", "brand", "professional"]].includes(accountType);
   const isVerified = profile?.verification_status === "verified";
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,7 +61,7 @@ export default function VerifyAccountPage() {
     if (!user) return;
     if (!fullName.trim()) { toast.error("Inserisci il nome completo"); return; }
     if (files.length === 0) { toast.error("Carica almeno un documento d'identità"); return; }
-    if (isBusiness && !vatNumber.trim()) { toast.error("Inserisci la Partita IVA"); return; }
+    if (isTrueBusiness && !vatNumber.trim()) { toast.error("Inserisci la Partita IVA"); return; }
 
     setSubmitting(true);
     const docUrls: string[] = [];
@@ -196,9 +202,12 @@ export default function VerifyAccountPage() {
                     className="w-full h-12 rounded-xl bg-card border border-border/50 px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold mb-1.5 block">Partita IVA *</label>
+                  <label className="text-xs font-semibold mb-1.5 block">Partita IVA {isTrueBusiness ? "*" : "(facoltativa)"}</label>
                   <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="IT12345678901"
                     className="w-full h-12 rounded-xl bg-card border border-border/50 px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
+                  {!isTrueBusiness && (
+                    <p className="text-[11px] text-muted-foreground mt-1">Se lavori a domicilio o in mobilità senza Partita IVA, puoi lasciare vuoto.</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-semibold mb-1.5 block">Codice Fiscale</label>

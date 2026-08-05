@@ -127,6 +127,7 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connecting, setConnecting] = useState(true);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const joinRetryRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!active || !streamId || !broadcasterId || !user) return;
@@ -160,6 +161,7 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
         if (row.call_id !== streamId || cancelled) return;
 
         if (row.signal_type === "live-offer") {
+          if (joinRetryRef.current) { clearInterval(joinRetryRef.current); joinRetryRef.current = null; }
           await pc.setRemoteDescription(new RTCSessionDescription(row.payload));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -173,15 +175,28 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await supabase.from("call_signals").insert({
-            call_id: streamId, from_user: user.id, to_user: broadcasterId,
-            signal_type: "live-join", payload: null, call_kind: "video",
-          });
+          const sendJoin = () => {
+            void supabase.from("call_signals").insert({
+              call_id: streamId, from_user: user.id, to_user: broadcasterId,
+              signal_type: "live-join", payload: null, call_kind: "video",
+            });
+          };
+          sendJoin();
+          // BUG FIX: prima il segnale "mi sono collegato" veniva inviato
+          // una sola volta. Se chi trasmette era ancora in attesa del
+          // permesso della fotocamera (può richiedere diversi secondi),
+          // il suo canale di ascolto non era ancora pronto — quel
+          // segnale andava perso per sempre (Supabase non ripete eventi
+          // passati). Risultato: la diretta partiva per chi trasmette
+          // ma non arrivava mai a chi guardava. Ora si ripete ogni 3
+          // secondi finché non arriva davvero un'offerta video reale.
+          joinRetryRef.current = window.setInterval(sendJoin, 3000);
         }
       });
 
     return () => {
       cancelled = true;
+      if (joinRetryRef.current) { clearInterval(joinRetryRef.current); joinRetryRef.current = null; }
       void supabase.from("call_signals").insert({
         call_id: streamId, from_user: user.id, to_user: broadcasterId,
         signal_type: "live-leave", payload: null, call_kind: "video",

@@ -11,6 +11,7 @@ import { TenantProvider } from "@/contexts/TenantContext";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import SplashScreen from "@/components/SplashScreen";
 import PageTracker from "@/components/PageTracker";
+import OnboardingGate from "@/components/OnboardingGate";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import PresenceTracker from "@/components/PresenceTracker";
@@ -161,6 +162,7 @@ const App = () => {
         <TenantProvider>
         <RadioProvider>
           <PageTracker />
+          <OnboardingGate />
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public routes */}
