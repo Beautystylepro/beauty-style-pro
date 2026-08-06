@@ -244,13 +244,36 @@ export function useWebRTCCall() {
   }, [cleanupPeer, resetCallState, sendSignal]);
 
   const getMedia = useCallback(async (kind: CallKind): Promise<MediaStream> => {
+    // BUG TROVATO: "facingMode: 'user'" come richiesta RIGIDA — sui
+    // computer (a differenza dei telefoni) le webcam spesso non hanno
+    // questo concetto di "fotocamera frontale/posteriore", e alcuni
+    // browser rifiutano l'intera richiesta invece di usare comunque
+    // la webcam disponibile, dando esattamente "dispositivo non
+    // trovato" anche quando una webcam perfettamente funzionante
+    // esiste. Corretto: ora è una preferenza (usata se disponibile),
+    // non un requisito che blocca tutto se assente.
     const constraints: MediaStreamConstraints = {
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       video: kind === "video"
-        ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+        ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: { ideal: "user" } }
         : false,
     };
-    return navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err: any) {
+      // Ripiego: se anche con vincoli minimi il video specifico fallisce
+      // (dispositivo con una sola webcam non standard, o nessuna scelta
+      // possibile), riprova con vincoli video generici senza preferenze,
+      // prima di arrendersi davvero.
+      if (kind === "video" && (err?.name === "OverconstrainedError" || err?.name === "NotFoundError")) {
+        console.error("[CALL] getUserMedia con vincoli specifici fallita, riprovo con vincoli minimi", err);
+        return await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: true,
+        });
+      }
+      throw err;
+    }
   }, []);
 
   const hydrateIncoming = useCallback(async (signal: SignalRow) => {
