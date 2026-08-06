@@ -12,6 +12,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import SplashScreen from "@/components/SplashScreen";
 import PageTracker from "@/components/PageTracker";
 import OnboardingGate from "@/components/OnboardingGate";
+import ReferralCapture from "@/components/ReferralCapture";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import PresenceTracker from "@/components/PresenceTracker";
@@ -163,6 +164,7 @@ const App = () => {
         <RadioProvider>
           <PageTracker />
           <OnboardingGate />
+          <ReferralCapture />
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public routes */}

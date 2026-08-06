@@ -176,6 +176,7 @@ export default function AuthPage() {
       country: country || "Italia",
       preferred_language: languageFromCountry(country || "Italia"),
       bio: bio || undefined,
+      ref_code: (() => { try { return window.localStorage.getItem("style_ref_code") || undefined; } catch { return undefined; } })(),
       surname: surname || undefined,
       username: username || undefined,
       whatsapp: whatsapp || undefined,

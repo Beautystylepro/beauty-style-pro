@@ -40,9 +40,21 @@ export default function CompleteProfilePage() {
     if (!user || !gender || !accountType) return;
     setSaving(true);
 
+    // Chi si registra con Google salta il modulo normale (dove il
+    // codice di affiliazione viene passato subito) — lo risolviamo
+    // qui, la prima vera occasione dopo la registrazione con Google.
+    let referredBy: string | null = null;
+    try {
+      const savedRef = window.localStorage.getItem("style_ref_code");
+      if (savedRef) {
+        const { data: aff } = await supabase.from("affiliates").select("id").eq("affiliate_code", savedRef).maybeSingle();
+        if (aff) referredBy = aff.id;
+      }
+    } catch { /* best-effort, ignore */ }
+
     const { error } = await supabase
       .from("profiles")
-      .update({ gender, color_theme: gender, user_type: accountType })
+      .update({ gender, color_theme: gender, user_type: accountType, ...(referredBy ? { referred_by: referredBy } : {}) })
       .eq("user_id", user.id);
     if (error) {
       setSaving(false);
