@@ -12,9 +12,13 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 // i primi segnali essenziali (squillo, offerta video) rischiano di
 // perdersi nella finestra di ritardo.
 //
-// Questo componente tiene SEMPRE viva una connessione minima finché
-// l'utente ha l'app aperta — così il motore non si spegne mai nel
-// momento sbagliato. Montato una sola volta, per tutta l'app.
+// BUG TROVATO nella prima versione di questo componente: si iscriveva
+// al canale ma non registrava MAI una presenza attiva (mancava
+// channel.track(...)) — una sottoscrizione passiva che probabilmente
+// non contava come "utente davvero connesso" per il sistema, quindi
+// non impediva lo spegnimento. Corretto: ora registra attivamente la
+// presenza e la rinnova ogni 20 secondi, generando vero traffico
+// continuo che il servizio non può ignorare.
 export default function RealtimeKeepAlive() {
   const { user } = useAuth();
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -28,13 +32,25 @@ export default function RealtimeKeepAlive() {
       return;
     }
 
-    const channel = supabase
-      .channel(`keep-alive-${user.id}`)
-      .on("presence", { event: "sync" }, () => { /* nessuna azione necessaria, serve solo a tenere viva la connessione */ })
-      .subscribe();
+    const channel = supabase.channel(`keep-alive-${user.id}`, {
+      config: { presence: { key: user.id } },
+    });
+
+    let heartbeat: number | null = null;
+
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({ online_at: new Date().toISOString() });
+        heartbeat = window.setInterval(() => {
+          void channel.track({ online_at: new Date().toISOString() });
+        }, 20000);
+      }
+    });
+
     channelRef.current = channel;
 
     return () => {
+      if (heartbeat) clearInterval(heartbeat);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
