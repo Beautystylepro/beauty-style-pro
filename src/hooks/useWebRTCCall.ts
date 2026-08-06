@@ -19,9 +19,17 @@ export interface IncomingCall {
 // mobili (molto comuni in Italia) o wifi con restrizioni, una
 // connessione diretta tra due telefoni spesso non si riesce proprio a
 // stabilire — serve un server TURN che faccia da tramite. Senza,
-// la chiamata resta bloccata su "Connessione..." per sempre, senza
-// nessun errore visibile (circa 1 chiamata su 4-5 ne ha bisogno).
-const ICE_SERVERS: RTCIceServer[] = [
+// circa 1 connessione su 4-5 resta bloccata su "Connessione..." per
+// sempre, senza nessun errore visibile.
+//
+// Le credenziali TURN gratuite pubbliche (openrelayproject) sono una
+// rete di sicurezza sempre presente, ma la loro affidabilità nel
+// tempo non è garantita (servizio di terzi senza account). Dato che
+// l'account Twilio è già configurato con credito vero, si tenta
+// PRIMA di ottenere credenziali TURN reali e affidabili da Twilio; se
+// non disponibili, si ricade su quelle gratuite senza mai restare
+// senza alcun server TURN.
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
@@ -29,6 +37,30 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
   { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
+
+// Cache condivisa a livello di modulo: recuperata una volta, riusata
+// per tutte le chiamate finché valida (i token Twilio durano 1 ora).
+let cachedIceServers: RTCIceServer[] = FALLBACK_ICE_SERVERS;
+let iceServersFetchedAt = 0;
+
+async function refreshIceServers(): Promise<void> {
+  if (Date.now() - iceServersFetchedAt < 45 * 60 * 1000) return; // ancora valide
+  try {
+    const { data, error } = await supabase.functions.invoke("get-turn-credentials", {});
+    if (!error && data?.iceServers?.length > 0) {
+      cachedIceServers = [
+        { urls: "stun:stun.l.google.com:19302" },
+        ...data.iceServers,
+      ];
+      iceServersFetchedAt = Date.now();
+      console.log("[CALL] Usando server TURN Twilio (affidabili)");
+    } else {
+      console.log("[CALL] Twilio non disponibile, uso server TURN gratuiti di riserva");
+    }
+  } catch (e) {
+    console.error("[CALL] Errore recupero credenziali TURN, uso riserva", e);
+  }
+}
 
 interface SignalRow {
   id: string;
@@ -43,6 +75,11 @@ interface SignalRow {
 
 export function useWebRTCCall() {
   const { user, profile } = useAuth();
+
+  useEffect(() => {
+    if (user) void refreshIceServers();
+  }, [user]);
+
   const [status, setStatus] = useState<CallStatus>("idle");
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -146,7 +183,7 @@ export function useWebRTCCall() {
   }, [activeKind, cleanupPeer, resetCallState, sendSignal]);
 
   const createPeer = useCallback((toUser: string, callId: string, kind: CallKind) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: cachedIceServers });
 
     // BUG TROVATO: se la negoziazione della connessione non riusciva
     // MAI a concludersi (né "connesso" né "fallito" — capita quando

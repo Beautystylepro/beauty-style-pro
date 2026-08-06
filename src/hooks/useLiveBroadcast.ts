@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 // bene per il pubblico realistico di una diretta di un salone/
 // professionista, non pensato per migliaia di spettatori simultanei.
 
-const ICE_SERVERS: RTCIceServer[] = [
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
@@ -21,8 +21,28 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
+// Stessa cache condivisa usata dalle videochiamate (useWebRTCCall) —
+// credenziali TURN Twilio affidabili, con le gratuite come riserva.
+let cachedIceServers: RTCIceServer[] = FALLBACK_ICE_SERVERS;
+let iceServersFetchedAt = 0;
+
+async function refreshIceServers(): Promise<void> {
+  if (Date.now() - iceServersFetchedAt < 45 * 60 * 1000) return;
+  try {
+    const { data, error } = await supabase.functions.invoke("get-turn-credentials", {});
+    if (!error && data?.iceServers?.length > 0) {
+      cachedIceServers = [{ urls: "stun:stun.l.google.com:19302" }, ...data.iceServers];
+      iceServersFetchedAt = Date.now();
+    }
+  } catch { /* usa la riserva gratuita, nessun problema */ }
+}
+
 export function useLiveBroadcaster(streamId: string | null, active: boolean) {
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) void refreshIceServers();
+  }, [user]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +71,7 @@ export function useLiveBroadcaster(streamId: string | null, active: boolean) {
 
       const createPeerForViewer = async (viewerId: string) => {
         if (peersRef.current.has(viewerId)) return;
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const pc = new RTCPeerConnection({ iceServers: cachedIceServers });
         peersRef.current.set(viewerId, pc);
         setViewerCount(peersRef.current.size);
 
@@ -127,6 +147,11 @@ export function useLiveBroadcaster(streamId: string | null, active: boolean) {
 
 export function useLiveViewer(streamId: string | null, broadcasterId: string | null, active: boolean) {
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) void refreshIceServers();
+  }, [user]);
+
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connecting, setConnecting] = useState(true);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -137,7 +162,7 @@ export function useLiveViewer(streamId: string | null, broadcasterId: string | n
     if (user.id === broadcasterId) return; // the broadcaster views their own local stream directly, not via WebRTC
 
     let cancelled = false;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: cachedIceServers });
     pcRef.current = pc;
 
     // Se dopo 25 secondi non è ancora arrivato nessun video, smette di
