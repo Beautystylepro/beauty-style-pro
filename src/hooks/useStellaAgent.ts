@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { haversineDistance } from '@/hooks/useGeolocation';
 import { findNextAvailableSlot } from '@/lib/availability';
 import { useStellaLearning } from '@/hooks/useStellaLearning';
+import { useCall } from '@/contexts/CallContext';
 
 // ── Rate limits ──────────────────────────────────────────────────────────────
 const LIMITS = {
@@ -89,6 +90,7 @@ export function useStellaAgent() {
   const { user, profile } = useAuth();
   const { speak, cancel: cancelTTS, speaking } = useVoiceSynthesis();
   const { analyzePatterns, getProactiveSuggestions, trackPageVisit, getTopPages } = useStellaLearning();
+  const { status: callStatus } = useCall();
 
   const [messages, setMessages] = useState<StellaMessage[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -309,6 +311,25 @@ export function useStellaAgent() {
       window.removeEventListener('focus', handleVisibilityRecovery);
     };
   }, [isSupported, wakeWordActive, isWakeWordListening, isListening, startWakeWordListening]);
+
+  // BUG TROVATO: "Ehi Stella" restava in ascolto anche durante una
+  // chiamata attiva, competendo con la chiamata stessa per lo stesso
+  // microfono — rischio reale di conflitti audio o falsi comandi
+  // captati dalla conversazione. Ora l'ascolto si mette in pausa
+  // automaticamente quando una chiamata inizia (squilla, in
+  // connessione, o in corso), e riparte da solo quando la chiamata
+  // finisce.
+  const wasPausedForCallRef = useRef(false);
+  useEffect(() => {
+    const inCall = callStatus !== 'idle';
+    if (inCall && isWakeWordListening) {
+      wasPausedForCallRef.current = true;
+      stopWakeWordListening();
+    } else if (!inCall && wasPausedForCallRef.current) {
+      wasPausedForCallRef.current = false;
+      if (isSupported && wakeWordActive) startWakeWordListening();
+    }
+  }, [callStatus, isWakeWordListening, isSupported, wakeWordActive, stopWakeWordListening, startWakeWordListening]);
 
   // Process transcript when command listening ends
   useEffect(() => {
