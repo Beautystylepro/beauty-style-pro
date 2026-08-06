@@ -13,6 +13,7 @@ import SplashScreen from "@/components/SplashScreen";
 import PageTracker from "@/components/PageTracker";
 import OnboardingGate from "@/components/OnboardingGate";
 import ReferralCapture from "@/components/ReferralCapture";
+import RealtimeKeepAlive from "@/components/RealtimeKeepAlive";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import PresenceTracker from "@/components/PresenceTracker";
@@ -165,6 +166,7 @@ const App = () => {
           <PageTracker />
           <OnboardingGate />
           <ReferralCapture />
+          <RealtimeKeepAlive />
           <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public routes */}
