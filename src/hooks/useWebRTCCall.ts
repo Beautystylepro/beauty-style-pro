@@ -432,13 +432,20 @@ export function useWebRTCCall() {
       setPeerId(fromUser);
       setStatus("connecting");
       stopRingtone();
+      // BUG TROVATO: la schermata "chiamata in arrivo" restava visibile
+      // (incoming non ancora azzerato) mentre lo stato interno era già
+      // passato a "connecting" — un'incoerenza che, nella finestra di
+      // attesa del permesso della fotocamera (che può richiedere
+      // tempo), poteva far apparire l'interfaccia bloccata. Ora la
+      // transizione è immediata e pulita, prima di aspettare qualsiasi
+      // cosa.
+      setIncoming(null);
 
       const stream = await getMedia(kind);
       setLocalStream(stream);
 
       const pc = createPeer(fromUser, callId, kind);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      setIncoming(null);
 
       // BUG TROVATO: chi trasmette manda "ringing" e SOLO DOPO manda
       // l'offerta video vera e propria (due invii separati, non uno
