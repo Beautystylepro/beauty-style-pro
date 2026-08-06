@@ -162,7 +162,9 @@ IMPORTANT RULES:
     });
 
     if (!response.ok) {
-      const fallback = "Stella AI is temporarily unavailable.";
+      const errorBody = await response.text();
+      console.error("stella-intent: Anthropic API error", { status: response.status, body: errorBody });
+      const fallback = "Stella non riesce a rispondere in questo momento (errore tecnico). Riprova tra poco.";
       return new Response(JSON.stringify({ intent: "chat", response: fallback }), {
         status: response.status === 429 || response.status === 402 ? response.status : 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
