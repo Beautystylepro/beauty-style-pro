@@ -90,7 +90,7 @@ export function useStellaAgent() {
   const { user, profile } = useAuth();
   const { speak, cancel: cancelTTS, speaking } = useVoiceSynthesis();
   const { analyzePatterns, getProactiveSuggestions, trackPageVisit, getTopPages } = useStellaLearning();
-  const { status: callStatus } = useCall();
+  const { status: callStatus, startCall: startRealCall } = useCall();
 
   const [messages, setMessages] = useState<StellaMessage[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -803,6 +803,28 @@ export function useStellaAgent() {
   }, [profile]);
 
   // ── Helper: follow a user ─────────────────────────────────────────────────
+  // BUG TROVATO: quando riconosceva "chiama qualcuno", Stella si
+  // limitava ad aprire la lista chat generale — ignorava completamente
+  // il nome della persona, non avviava mai la chiamata vera. Costruita
+  // per davvero: cerca la persona per nome (stesso motore già
+  // funzionante di "segui"/"messaggio"), poi avvia davvero la
+  // videochiamata o chiamata vocale tramite il sistema di chiamate
+  // condiviso in tutta l'app.
+  const callUser = useCallback(async (targetName: string, kind: "video" | "voice" = "video") => {
+    if (!user) return "Devi effettuare il login per chiamare qualcuno!";
+    if (callStatus !== "idle") return "Hai già una chiamata in corso!";
+
+    const profiles = await findProfileByName(targetName);
+    if (profiles.length === 0) return `Non ho trovato nessun profilo con il nome "${targetName}".`;
+
+    const target = profiles[0];
+    if (target.user_id === user.id) return "Non puoi chiamare te stesso! 😄";
+
+    rememberTarget(target.display_name || target.username || targetName, target.user_id);
+    startRealCall(target.user_id, kind, target.display_name || target.username || targetName);
+    return `Chiamata ${kind === "video" ? "video" : "vocale"} a ${target.display_name || target.username} in corso... 📞`;
+  }, [user, callStatus, findProfileByName, rememberTarget, startRealCall]);
+
   const followUser = useCallback(async (targetName: string) => {
     if (!user) return 'Devi effettuare il login per seguire qualcuno!';
     
@@ -1640,10 +1662,16 @@ export function useStellaAgent() {
         actionFeedback(cancelResult, '❌');
         break;
       }
-      case 'call':
-        actionFeedback(response, '📞');
-        delayedNavigate('/chat');
+      case 'call': {
+        if (params?.target_name) {
+          const isVideo = params?.call_type !== 'voice';
+          const callResult = await callUser(params.target_name, isVideo ? 'video' : 'voice');
+          actionFeedback(callResult, '📞');
+        } else {
+          actionFeedback('Dimmi chi vuoi chiamare, per esempio "chiama Marco"', '📞');
+        }
         break;
+      }
       case 'scroll':
         if (params?.direction === 'up') window.scrollBy({ top: -400, behavior: 'smooth' });
         else if (params?.direction === 'down') window.scrollBy({ top: 400, behavior: 'smooth' });

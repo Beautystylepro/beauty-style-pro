@@ -54,7 +54,7 @@ Available actions and their parameters:
 - book: Book an appointment. params: { target_name?: string }
 - confirm_booking: Confirm a pending booking. params: {}
 - cancel_booking: Cancel a pending booking. params: {}
-- call: Call someone. params: { target_name: string }
+- call: Call someone. params: { target_name: string, call_type: "video" | "voice" }. Default to "video" unless the user explicitly says "vocale"/"audio"/"voice call" (not "videochiamata"/"video call"/"chiamami").
 - scroll: Scroll the page. params: { direction: "up" | "down" | "top" | "bottom" }
 - theme: Change theme. params: { mode: "dark" | "light" }
 - share: Share current page. params: {}
@@ -131,6 +131,7 @@ IMPORTANT RULES:
                     route: { type: "string", description: "App route path for navigate intent" },
                     query: { type: "string" },
                     target_name: { type: "string" },
+                    call_type: { type: "string", enum: ["video", "voice"], description: "For the call intent: video or voice call" },
                     name: { type: "string" },
                     recipient: { type: "string" },
                     content: { type: "string", description: "Message content or post content" },
@@ -189,7 +190,7 @@ IMPORTANT RULES:
   } catch (error) {
     console.error("stella-intent error:", error);
     return new Response(JSON.stringify({ intent: "chat", response: "Error processing command." }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
