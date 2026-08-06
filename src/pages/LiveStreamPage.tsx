@@ -87,11 +87,26 @@ export default function LiveStreamPage() {
   const [showMusic, setShowMusic] = useState(false);
   const [interactionScore, setInteractionScore] = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+  const [showPostStats, setShowPostStats] = useState(false);
   const [isFollowingStreamer, setIsFollowingStreamer] = useState(false);
 
-  // Il pulsante "Segui" era decorativo: nessuna funzione reale, e
-  // compariva anche per chi guarda la PROPRIA diretta (segui te
-  // stesso). Corretto: nascosto per il proprietario, funzione vera.
+  // Video reale della diretta (WebRTC) — prima al posto della fotocamera
+  // c'era solo un'immagine statica. Chi è il proprietario della diretta
+  // trasmette la propria fotocamera; chiunque altro la riceve in tempo
+  // reale come spettatore.
+  const isBroadcaster = !!selectedStream && !!user && selectedStream.professional?.user_id === user.id;
+  const { localStream: broadcastLocalStream, viewerCount: liveViewerCount, error: broadcastError } =
+    useLiveBroadcaster(selectedStream?.id || null, isBroadcaster);
+  const { remoteStream: viewerRemoteStream, connecting: viewerConnecting } =
+    useLiveViewer(selectedStream?.id || null, selectedStream?.professional?.user_id || null, !!selectedStream && !isBroadcaster);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+
+  // BUG CRITICO TROVATO: isBroadcaster veniva usato qui sopra (nella
+  // dipendenza dell'effetto e dentro la funzione) PRIMA di essere
+  // dichiarato più giù nel file — un errore reale di "variabile usata
+  // prima della dichiarazione" che bloccava l'intera pagina al primo
+  // caricamento, rendendola completamente vuota. Spostato dopo la
+  // dichiarazione vera, ordine corretto.
   useEffect(() => {
     if (!user || !selectedStream?.professional?.user_id || isBroadcaster) { setIsFollowingStreamer(false); return; }
     supabase.from("follows").select("id").eq("follower_id", user.id).eq("following_id", selectedStream.professional.user_id).maybeSingle()
@@ -111,18 +126,7 @@ export default function LiveStreamPage() {
       toast.success("Ora segui questo professionista");
     }
   };
-  const [showPostStats, setShowPostStats] = useState(false);
 
-  // Video reale della diretta (WebRTC) — prima al posto della fotocamera
-  // c'era solo un'immagine statica. Chi è il proprietario della diretta
-  // trasmette la propria fotocamera; chiunque altro la riceve in tempo
-  // reale come spettatore.
-  const isBroadcaster = !!selectedStream && !!user && selectedStream.professional?.user_id === user.id;
-  const { localStream: broadcastLocalStream, viewerCount: liveViewerCount, error: broadcastError } =
-    useLiveBroadcaster(selectedStream?.id || null, isBroadcaster);
-  const { remoteStream: viewerRemoteStream, connecting: viewerConnecting } =
-    useLiveViewer(selectedStream?.id || null, selectedStream?.professional?.user_id || null, !!selectedStream && !isBroadcaster);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (localVideoRef.current && broadcastLocalStream) localVideoRef.current.srcObject = broadcastLocalStream;
