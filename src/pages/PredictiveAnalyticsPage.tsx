@@ -50,7 +50,9 @@ export default function PredictiveAnalyticsPage() {
     try {
       const { data, error } = await supabase.functions.invoke("generate-predictive-insights", {});
       if (error) throw error;
-      if (data?.insufficientData) {
+      if (data?.error) {
+        setInsufficientDataMsg(data.error);
+      } else if (data?.insufficientData) {
         setInsufficientDataMsg(data.message);
       } else {
         await refetch();
