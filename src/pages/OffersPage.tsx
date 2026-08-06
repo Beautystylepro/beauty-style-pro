@@ -1,5 +1,5 @@
 import MobileLayout from "@/components/layout/MobileLayout";
-import { ArrowLeft, Tag, Flame, Clock, Percent, Gift, Plus, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Tag, Flame, Clock, Percent, Gift, Plus, ShoppingBag, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,6 +27,22 @@ export default function OffersPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", original_price: "", offer_price: "", offer_type: "discount" });
+  const [suggestingText, setSuggestingText] = useState(false);
+
+  const suggestOfferText = async () => {
+    if (!form.title.trim()) { toast.error("Scrivi prima il titolo dell'offerta"); return; }
+    setSuggestingText(true);
+    const { data, error } = await supabase.functions.invoke("generate-marketing-copy", {
+      body: {
+        goal: `Descrizione breve e invogliante per un'offerta beauty: "${form.title}"${form.original_price && form.offer_price ? `, da €${form.original_price} a €${form.offer_price}` : ""}. 2-3 frasi.`,
+        existingText: form.description.trim() || undefined,
+        channel: "email",
+      },
+    });
+    setSuggestingText(false);
+    if (error || data?.error) { toast.error(data?.error || "Suggerimento non riuscito"); return; }
+    if (data?.body) setForm(f => ({ ...f, description: data.body.slice(0, 500) }));
+  };
 
   useEffect(() => { fetchOffers(); }, []);
 
@@ -92,9 +108,15 @@ export default function OffersPage() {
             <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               placeholder="Titolo offerta *" maxLength={100}
               className="w-full h-10 rounded-xl bg-background border border-border px-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30" />
-            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Descrizione..." rows={2} maxLength={500}
-              className="w-full rounded-xl bg-background border border-border px-4 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/30" />
+            <div className="relative">
+              <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Descrizione..." rows={2} maxLength={500}
+                className="w-full rounded-xl bg-background border border-border px-4 py-2 pr-10 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/30" />
+              <button onClick={suggestOfferText} disabled={suggestingText} title="Suggerisci con AI"
+                className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center disabled:opacity-50">
+                <Sparkles className={`w-3.5 h-3.5 text-primary ${suggestingText ? "animate-pulse" : ""}`} />
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <input value={form.original_price} onChange={e => setForm(f => ({ ...f, original_price: e.target.value }))}
                 placeholder="Prezzo originale €" type="number" step="0.01"
