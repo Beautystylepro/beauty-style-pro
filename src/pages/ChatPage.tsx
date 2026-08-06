@@ -587,6 +587,7 @@ export default function ChatPage() {
         },
       });
       if (error) throw error;
+      if (data?.error) { toast.error(data.error); return; }
       const text = data?.translated || data?.transcript || "Trascrizione non disponibile";
       setVoiceTranscripts(prev => ({ ...prev, [msg.id]: text }));
     } catch {

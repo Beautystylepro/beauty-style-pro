@@ -272,7 +272,12 @@ export const useVoiceRecognition = (
                 body: { audioBase64, mimeType },
               });
               const spokenText: string = (data?.transcript || '').trim();
-              if (fnError || !spokenText) {
+              if (fnError || data?.error) {
+                console.error('[voice-transcribe] errore reale:', data?.error || fnError);
+                setError(data?.error || 'Non sono riuscita a capire, riprova.');
+                return;
+              }
+              if (!spokenText) {
                 setError('Non sono riuscita a capire, riprova.');
                 return;
               }

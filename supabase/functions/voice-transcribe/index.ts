@@ -26,7 +26,7 @@ serve(async (req) => {
       let parsed: URL;
       try { parsed = new URL(audioUrl); } catch {
         return new Response(JSON.stringify({ error: "Invalid audioUrl" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const allowedHosts = [
@@ -34,7 +34,7 @@ serve(async (req) => {
       ];
       if (parsed.protocol !== "https:" || !allowedHosts.includes(parsed.host)) {
         return new Response(JSON.stringify({ error: "audioUrl host not allowed" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const r = await fetch(parsed.toString());
@@ -44,7 +44,7 @@ serve(async (req) => {
       audioB64 = btoa(String.fromCharCode(...bytes));
     } else {
       return new Response(JSON.stringify({ error: "audioUrl or audioBase64 required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -70,8 +70,8 @@ serve(async (req) => {
     if (!sttResp.ok) {
       const t = await sttResp.text();
       console.error("STT error", sttResp.status, t);
-      return new Response(JSON.stringify({ error: "Transcription failed" }), {
-        status: sttResp.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ error: `Trascrizione fallita (${sttResp.status}): ${t.substring(0, 200)}` }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -112,7 +112,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("voice-transcribe error", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

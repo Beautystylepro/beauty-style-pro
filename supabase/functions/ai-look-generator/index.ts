@@ -20,7 +20,7 @@ serve(async (req) => {
 
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
   if (!GEMINI_API_KEY)
-    return jsonResponse({ error: "GEMINI_API_KEY not configured" }, 500);
+    return jsonResponse({ error: "GEMINI_API_KEY not configured" }, 200);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -167,17 +167,20 @@ serve(async (req) => {
           return jsonResponse({
             error: "Troppe richieste. Riprova tra qualche secondo.",
             code: "RATE_LIMITED",
-          }, 429);
+          }, 200);
         }
         if (status === 402) {
           return jsonResponse({
             error: "Servizio AI temporaneamente non disponibile. Riprova più tardi.",
             code: "PAYMENT_REQUIRED",
-          }, 402);
+          }, 200);
         }
         const errorText = await aiResponse.text();
         console.error("[AI-LOOK] AI error:", status, errorText);
-        throw new Error("Errore generazione AI");
+        return jsonResponse({
+          error: `Errore Gemini (${status}): ${errorText.substring(0, 300)}`,
+          code: "AI_ERROR",
+        }, 200);
       }
 
       const aiData = await aiResponse.json();
@@ -363,14 +366,14 @@ Return ONLY valid JSON in this format:
     }
 
     return new Response(JSON.stringify({ error: "Azione non valida" }), {
-      status: 400,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("[AI-LOOK] Error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Errore sconosciuto" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
