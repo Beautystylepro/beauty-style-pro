@@ -13,6 +13,7 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (id) fetchBooking();
@@ -29,6 +30,54 @@ export default function BookingDetailPage() {
     setLoading(false);
   };
 
+  // BUG TROVATO: mancava del tutto un modo per il PROFESSIONISTA di
+  // confermare o rifiutare una richiesta in arrivo — poteva solo
+  // vederne il conteggio nella dashboard, senza nessuna azione reale
+  // possibile. Ogni prenotazione restava "in attesa" per sempre.
+  const isProfessionalView = booking?.professionals?.user_id === user?.id;
+
+  const handleConfirm = async () => {
+    if (!booking) return;
+    setConfirming(true);
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: "confirmed" })
+      .eq("id", booking.id);
+    if (error) {
+      toast.error("Errore nella conferma");
+    } else {
+      toast.success("Prenotazione confermata ✓");
+      setBooking({ ...booking, status: "confirmed" });
+      await supabase.rpc("notify_booking_status_change", {
+        _booking_id: booking.id,
+        _title: "Prenotazione Confermata ✅",
+        _message: `Il tuo appuntamento del ${booking.booking_date} è stato confermato dal professionista.`,
+      });
+    }
+    setConfirming(false);
+  };
+
+  const handleReject = async () => {
+    if (!booking) return;
+    setCancelling(true);
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: "cancelled" })
+      .eq("id", booking.id);
+    if (error) {
+      toast.error("Errore nel rifiuto");
+    } else {
+      toast.success("Richiesta rifiutata");
+      setBooking({ ...booking, status: "cancelled" });
+      await supabase.rpc("notify_booking_status_change", {
+        _booking_id: booking.id,
+        _title: "Richiesta non accettata",
+        _message: `Il professionista non può confermare l'appuntamento del ${booking.booking_date}. Prova un altro orario.`,
+      });
+    }
+    setCancelling(false);
+  };
+
   const handleCancel = async () => {
     if (!booking) return;
     setCancelling(true);
@@ -40,6 +89,13 @@ export default function BookingDetailPage() {
     else {
       toast.success("Prenotazione cancellata");
       setBooking({ ...booking, status: "cancelled" });
+      // Avvisa l'altra parte: prima nessuno veniva notificato di un
+      // annullamento, l'altra persona lo scopriva solo aprendo l'app.
+      await supabase.rpc("notify_booking_status_change", {
+        _booking_id: booking.id,
+        _title: "Prenotazione Annullata",
+        _message: `L'appuntamento del ${booking.booking_date} è stato annullato.`,
+      });
     }
     setCancelling(false);
   };
@@ -162,7 +218,26 @@ export default function BookingDetailPage() {
             </>
           )}
 
-          {booking.status === "pending" && (
+          {booking.status === "pending" && isProfessionalView && (
+            <>
+              <button
+                onClick={handleConfirm}
+                disabled={confirming}
+                className="w-full h-12 rounded-xl gradient-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {confirming ? "Confermando..." : "✓ Conferma Prenotazione"}
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={cancelling}
+                className="w-full h-12 rounded-xl bg-card border-2 border-destructive text-destructive font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <X className="w-4 h-4" /> {cancelling ? "..." : "Rifiuta"}
+              </button>
+            </>
+          )}
+
+          {booking.status === "pending" && !isProfessionalView && (
             <button
               onClick={handleCancel}
               disabled={cancelling}
