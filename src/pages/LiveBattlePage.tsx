@@ -4,6 +4,7 @@ import { ArrowLeft, Eye, Gift, Send, Coins, Trophy, Flame, Crown, Swords, Shoppi
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQRCoinRewards } from "@/hooks/useQRCoinRewards";
+import { useLiveBroadcaster, useLiveViewer } from "@/hooks/useLiveBroadcast";
 import MobileLayout from "@/components/layout/MobileLayout";
 import LiveShopPanel from "@/components/live/LiveShopPanel";
 import ReportDialog from "@/components/ReportDialog";
@@ -52,6 +53,43 @@ export default function LiveBattlePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatMessage, setChatMessage] = useState("");
   const [hasVoted, setHasVoted] = useState(false);
+
+  // BUG TROVATO: la battle mostrava solo foto stock statiche prese da
+  // Unsplash (nemmeno legate ai veri partecipanti) al posto del video
+  // reale — una vera finzione, non una diretta vera. Corretto usando
+  // la STESSA infrastruttura WebRTC già testata e funzionante delle
+  // dirette normali: ogni lato della battle è trattato come una
+  // propria sessione video indipendente (id battle + "-a" o "-b").
+  const isHostA = !!user && selectedBattle?.host_a_id === user.id;
+  const isHostB = !!user && selectedBattle?.host_b_id === user.id;
+  const { localStream: localStreamA } = useLiveBroadcaster(
+    selectedBattle ? `${selectedBattle.id}-a` : null, isHostA
+  );
+  const { localStream: localStreamB } = useLiveBroadcaster(
+    selectedBattle ? `${selectedBattle.id}-b` : null, isHostB
+  );
+  const { remoteStream: remoteStreamA } = useLiveViewer(
+    selectedBattle ? `${selectedBattle.id}-a` : null,
+    selectedBattle?.host_a_id || null,
+    !!selectedBattle && !isHostA
+  );
+  const { remoteStream: remoteStreamB } = useLiveViewer(
+    selectedBattle ? `${selectedBattle.id}-b` : null,
+    selectedBattle?.host_b_id || null,
+    !!selectedBattle && !isHostB
+  );
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const stream = isHostA ? localStreamA : remoteStreamA;
+    if (videoARef.current && stream) videoARef.current.srcObject = stream;
+  }, [isHostA, localStreamA, remoteStreamA]);
+
+  useEffect(() => {
+    const stream = isHostB ? localStreamB : remoteStreamB;
+    if (videoBRef.current && stream) videoBRef.current.srcObject = stream;
+  }, [isHostB, localStreamB, remoteStreamB]);
   const [showShop, setShowShop] = useState(false);
   const [showTipModal, setShowTipModal] = useState(false);
   const [tipSide, setTipSide] = useState<"a" | "b">("a");
@@ -188,10 +226,14 @@ export default function LiveBattlePage() {
           <div className="grid grid-cols-2 gap-1 p-2">
             {/* Host A */}
             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-card">
-              <img
-                src={selectedBattle.host_a_thumbnail || `https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400`}
-                alt="" className="w-full h-full object-cover"
-              />
+              {(isHostA ? localStreamA : remoteStreamA) ? (
+                <video ref={videoARef} autoPlay playsInline muted={isHostA} className="w-full h-full object-cover" />
+              ) : (
+                <img
+                  src={selectedBattle.host_a_thumbnail || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBattle.host_a_id}`}
+                  alt="" className="w-full h-full object-cover"
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/40" />
               <div className="absolute top-3 left-3">
                 <div className="w-12 h-12 rounded-full border-2 border-primary overflow-hidden">
@@ -213,10 +255,14 @@ export default function LiveBattlePage() {
 
             {/* Host B */}
             <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-card">
-              <img
-                src={selectedBattle.host_b_thumbnail || `https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400`}
-                alt="" className="w-full h-full object-cover"
-              />
+              {(isHostB ? localStreamB : remoteStreamB) ? (
+                <video ref={videoBRef} autoPlay playsInline muted={isHostB} className="w-full h-full object-cover" />
+              ) : (
+                <img
+                  src={selectedBattle.host_b_thumbnail || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBattle.host_b_id}`}
+                  alt="" className="w-full h-full object-cover"
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/40" />
               <div className="absolute top-3 right-3">
                 <div className="w-12 h-12 rounded-full border-2 border-accent overflow-hidden">
