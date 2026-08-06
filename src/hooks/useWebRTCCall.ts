@@ -323,10 +323,31 @@ export function useWebRTCCall() {
         avatar: profile?.avatar_url || null,
       }, kind, callId);
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await sendSignal("offer", toUser, { sdp: offer.sdp, type: offer.type }, kind, callId);
+      // BUG TROVATO nei dati reali: 10 tentativi di chiamata, zero
+      // offerte video mai inviate — qualcosa fallisce sempre proprio
+      // qui, tra "squillo" e "offerta". Registrazione dettagliata
+      // passo-passo per vedere l'errore esatto al prossimo tentativo.
+      let offer: RTCSessionDescriptionInit;
+      try {
+        offer = await pc.createOffer();
+      } catch (offerError: any) {
+        console.error("[CALL] createOffer failed", { message: offerError?.message, name: offerError?.name, pcState: pc.signalingState });
+        throw new Error("Errore nella creazione dell'offerta video: " + (offerError?.message || "sconosciuto"));
+      }
+      try {
+        await pc.setLocalDescription(offer);
+      } catch (sdpError: any) {
+        console.error("[CALL] setLocalDescription failed", { message: sdpError?.message, name: sdpError?.name, pcState: pc.signalingState });
+        throw new Error("Errore nell'impostazione dell'offerta: " + (sdpError?.message || "sconosciuto"));
+      }
+      try {
+        await sendSignal("offer", toUser, { sdp: offer.sdp, type: offer.type }, kind, callId);
+      } catch (signalError: any) {
+        console.error("[CALL] sendSignal(offer) failed", { message: signalError?.message, code: signalError?.code });
+        throw new Error("Errore nell'invio dell'offerta: " + (signalError?.message || "sconosciuto"));
+      }
     } catch (error: any) {
+      console.error("[CALL] startCall failed", { message: error?.message, name: error?.name });
       toast.error(error?.message || "Impossibile avviare la chiamata");
       cleanupPeer();
       resetCallState();
