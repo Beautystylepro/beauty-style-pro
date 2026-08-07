@@ -1751,7 +1751,7 @@ export function useStellaAgent() {
         break;
       }
       default:
-        actionFeedback(response.substring(0, 120) + (response.length > 120 ? '...' : ''), '💬');
+        actionFeedback(response.substring(0, 280) + (response.length > 280 ? '...' : ''), '💬');
         break;
     }
   }, [navigate, profile, user, goToProfile, likeLatestPost, followUser, unfollowUser, sendMessageTo, findProfileByName, commentOnPost, createPost, manageBooking, findNearbyProfessionals, addMessage, getUserStats, getUpcomingBookings]);
@@ -1860,8 +1860,19 @@ export function useStellaAgent() {
         completeStep(thinkId, 'done', 'Risposta in chat');
         scheduleStepsClear();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Stella AI error:', err);
+      // Registrazione dell'errore VERO nel database, per poterlo
+      // vedere con certezza al prossimo tentativo reale invece di
+      // continuare a ipotizzare senza dati concreti.
+      if (user) {
+        void supabase.from('stella_client_errors').insert({
+          user_id: user.id,
+          user_text: text,
+          error_message: err?.message || String(err),
+          error_stack: err?.stack || null,
+        });
+      }
       const fallback = 'Stella AI è temporaneamente offline. Dì "aiuto" per i comandi disponibili!';
       addMessage({ role: 'stella', content: fallback, type: 'text' });
       stellaSpeak(fallback);
