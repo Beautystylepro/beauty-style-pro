@@ -15,7 +15,7 @@ serve(async (req) => {
     
     if (!spokenText || spokenText.trim().length === 0) {
       return new Response(JSON.stringify({ error: "spokenText is required" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -58,12 +58,12 @@ serve(async (req) => {
       
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (aiResponse.status === 402 || aiResponse.status === 401) {
         return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       throw new Error("Translation failed");
@@ -119,7 +119,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("Translate-speak error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

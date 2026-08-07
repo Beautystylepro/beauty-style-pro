@@ -122,6 +122,7 @@ export default function CallManager() {
   const [liveTranslationOn, setLiveTranslationOn] = useState(false);
   const translationAudioRef = useRef<HTMLAudioElement | null>(null);
   const isProcessingRef = useRef(false);
+  const lastTranslationErrorToastRef = useRef(0);
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -264,6 +265,18 @@ export default function CallManager() {
         body: { spokenText, targetLanguage: callTargetLang },
       });
       if (error) throw error;
+      if (data?.error) {
+        console.error("[Traduzione] errore reale:", data.error);
+        // Un solo avviso ogni 10 secondi, per non spammare durante il
+        // flusso continuo di traduzione — prima l'errore spariva nel
+        // nulla senza che l'utente potesse mai saperlo.
+        const now = Date.now();
+        if (now - lastTranslationErrorToastRef.current > 10000) {
+          lastTranslationErrorToastRef.current = now;
+          toast.error("Traduzione non riuscita: " + data.error);
+        }
+        return;
+      }
 
       const translated = data?.translatedText || spokenText;
       setMySpeechTranslation(translated);

@@ -49,7 +49,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("Translation error:", e);
     return new Response(JSON.stringify({ translated: "", error: "Translation failed" }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
