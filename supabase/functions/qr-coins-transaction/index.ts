@@ -174,29 +174,56 @@ serve(async (req) => {
     }
 
     if (kind === "mission_claim") {
-      // NOTE: mission progress itself is still tracked client-side with
-      // hardcoded/placeholder progress values (not derived from real user
-      // activity) — that's a separate, larger redesign. This endpoint only
-      // guarantees that (a) the credited amount matches a real known
-      // mission's reward, and (b) each mission can only be claimed once per
-      // user, even if the client tries again after a page refresh.
-      const KNOWN_MISSIONS: Record<string, number> = {
-        d1: 5, d2: 10, d3: 5, d4: 10, d5: 5,
-        w1: 50, w2: 75, w3: 40, w4: 30,
+      // BUG TROVATO (rileggendo due settimane di sessioni precedenti):
+      // 1) le missioni GIORNALIERE, una volta riscattate, non
+      //    potevano MAI PIÙ esserlo nei giorni successivi — il
+      //    controllo anti-doppio-riscatto non aveva finestra
+      //    temporale, bloccava per sempre dopo il primo utilizzo.
+      // 2) l'endpoint si fidava del solo ID missione inviato dal
+      //    telefono, senza mai verificare che l'azione fosse stata
+      //    DAVVERO completata — chiunque avrebbe potuto riscattare
+      //    qualsiasi missione senza averla mai fatta.
+      const KNOWN_MISSIONS: Record<string, { amount: number; period: "daily" | "weekly" }> = {
+        d1: { amount: 5, period: "daily" }, d2: { amount: 10, period: "daily" },
+        d3: { amount: 5, period: "daily" }, d4: { amount: 10, period: "daily" },
+        d5: { amount: 5, period: "daily" },
+        w1: { amount: 50, period: "weekly" }, w2: { amount: 75, period: "weekly" },
+        w3: { amount: 40, period: "weekly" }, w4: { amount: 30, period: "weekly" },
       };
+      const MISSION_TARGETS: Record<string, number> = { d1: 1, d2: 1, d3: 3, d4: 1, d5: 1, w1: 3, w2: 5, w3: 2, w4: 1 };
       const missionId = String(body.missionId || "");
-      const amount = KNOWN_MISSIONS[missionId];
-      if (!amount) {
+      const mission = KNOWN_MISSIONS[missionId];
+      if (!mission) {
         return new Response(JSON.stringify({ error: "Missione non valida" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      // Verifica il progresso VERO prima di concedere qualsiasi premio.
+      const { data: realProgress } = await admin.rpc("get_real_mission_progress", { _user_id: user.id });
+      const actualProgress = Number((realProgress as any)?.[missionId] ?? 0);
+      const target = MISSION_TARGETS[missionId] ?? 1;
+      if (actualProgress < target) {
+        return new Response(JSON.stringify({ error: "Missione non ancora completata" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Il periodo di riferimento fa parte della chiave anti-frode:
+      // per le giornaliere è la data di oggi, per le settimanali
+      // l'inizio della settimana — così il riscatto si sblocca da
+      // solo al periodo successivo, invece di restare bloccato per
+      // sempre dopo il primo utilizzo.
+      const periodKey = mission.period === "daily"
+        ? new Date().toISOString().slice(0, 10)
+        : (() => { const d = new Date(); const day = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() - day + 1); return d.toISOString().slice(0, 10); })();
+      const referenceType = `mission_${missionId}_${periodKey}`;
+
       const { data: already } = await admin
         .from("transactions")
         .select("id")
         .eq("user_id", user.id)
-        .eq("reference_type", `mission_${missionId}`)
+        .eq("reference_type", referenceType)
         .maybeSingle();
       if (already) {
         return new Response(JSON.stringify({ error: "Missione già riscattata" }), {
@@ -205,13 +232,13 @@ serve(async (req) => {
       }
 
       const { data: newBalance, error } = await admin.rpc("credit_qr_coins", {
-        _user_id: user.id, _amount: amount,
+        _user_id: user.id, _amount: mission.amount,
       });
       if (error) throw error;
       await admin.from("transactions").insert({
-        user_id: user.id, amount, type: "earn", description: "Missione completata", reference_type: `mission_${missionId}`,
+        user_id: user.id, amount: mission.amount, type: "earn", description: "Missione completata", reference_type: referenceType,
       });
-      return new Response(JSON.stringify({ success: true, amount, newBalance }), {
+      return new Response(JSON.stringify({ success: true, amount: mission.amount, newBalance }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

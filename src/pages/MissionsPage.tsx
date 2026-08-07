@@ -95,9 +95,36 @@ export default function MissionsPage() {
   const [xpToNext, setXpToNext] = useState(500);
 
   useEffect(() => {
-    if (user) loadBadges();
+    if (user) { loadBadges(); loadRealProgress(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // TROVATO rileggendo due settimane di sessioni precedenti: le
+  // missioni mostravano progressi finti e identici per ogni utente
+  // (es. tutti risultavano aver già messo "1 like su 3"), segnalato
+  // allora ma mai davvero corretto. Ora calcola i progressi VERI
+  // contando le azioni reali fatte dall'utente, e assegna
+  // automaticamente eventuali nuovi badge guadagnati per davvero.
+  const loadRealProgress = async () => {
+    if (!user) return;
+    const { data: progress } = await supabase.rpc('get_real_mission_progress', { _user_id: user.id });
+    if (progress) {
+      setDailyMissions(prev => prev.map(m => {
+        const p = Math.min(Number(progress[m.id] ?? 0), m.target);
+        return { ...m, progress: p, completed: p >= m.target };
+      }));
+      setWeeklyMissions(prev => prev.map(m => {
+        const p = Math.min(Number(progress[m.id] ?? 0), m.target);
+        return { ...m, progress: p, completed: p >= m.target };
+      }));
+    }
+    const { data: awardResult } = await supabase.rpc('check_and_award_badges', { _user_id: user.id });
+    const newlyAwarded: string[] = awardResult?.newly_awarded || [];
+    if (newlyAwarded.length > 0) {
+      newlyAwarded.forEach(name => toast.success(`🏆 Nuovo traguardo: ${name}!`));
+      loadBadges();
+    }
+  };
 
   const loadBadges = async () => {
     const { data: dbBadges } = await supabase.from("badges").select("*");
