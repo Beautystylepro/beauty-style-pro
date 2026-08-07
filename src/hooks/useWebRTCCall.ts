@@ -81,6 +81,24 @@ export function useWebRTCCall() {
   }, [user]);
 
   const [status, setStatus] = useState<CallStatus>("idle");
+
+  // BUG TROVATO CON CERTEZZA: se un tentativo di chiamata precedente
+  // falliva in un modo che non riportava mai lo stato a "idle" (una
+  // pagina mai ricaricata dopo un errore), OGNI nuova chiamata in
+  // arrivo veniva rifiutata AUTOMATICAMENTE come "occupato" — senza
+  // che l'utente toccasse nulla. Sicurezza aggiuntiva: se lo stato
+  // resta bloccato su qualcosa di diverso da "idle" per più di 60
+  // secondi senza mai arrivare a "in-call", si ripulisce da solo.
+  useEffect(() => {
+    if (status === "idle" || status === "in-call") return;
+    const stuckTimeout = window.setTimeout(() => {
+      console.error("[CALL] Stato bloccato rilevato, ripulito automaticamente:", status);
+      cleanupPeer();
+      resetCallState();
+    }, 60000);
+    return () => clearTimeout(stuckTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
