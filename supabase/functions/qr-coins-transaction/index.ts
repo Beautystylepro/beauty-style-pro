@@ -41,14 +41,14 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const authed = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userError } = await authed.auth.getUser();
     if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const user = userData.user;
@@ -60,7 +60,7 @@ serve(async (req) => {
       const reward = REWARD_MAP[action];
       if (!reward) {
         return new Response(JSON.stringify({ error: "Azione non valida" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -101,7 +101,7 @@ serve(async (req) => {
       const reason = String(body.reason || "spend");
       if (!amount || amount <= 0) {
         return new Response(JSON.stringify({ error: "Importo non valido" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -112,7 +112,7 @@ serve(async (req) => {
       if (error) {
         const insufficient = error.message?.toLowerCase().includes("insufficient");
         return new Response(JSON.stringify({ error: insufficient ? "Saldo insufficiente" : "Operazione fallita" }), {
-          status: insufficient ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -144,7 +144,7 @@ serve(async (req) => {
       const amount = Math.min(Number(body.amount) || 0, MAX_SPIN_PRIZE);
       if (amount <= 0) {
         return new Response(JSON.stringify({ error: "Importo non valido" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const { data: last } = await admin
@@ -157,7 +157,7 @@ serve(async (req) => {
         .maybeSingle();
       if (last && Date.now() - new Date(last.created_at).getTime() < 3000) {
         return new Response(JSON.stringify({ error: "Troppo veloce, riprova" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -188,7 +188,7 @@ serve(async (req) => {
       const amount = KNOWN_MISSIONS[missionId];
       if (!amount) {
         return new Response(JSON.stringify({ error: "Missione non valida" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -200,7 +200,7 @@ serve(async (req) => {
         .maybeSingle();
       if (already) {
         return new Response(JSON.stringify({ error: "Missione già riscattata" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -224,12 +224,12 @@ serve(async (req) => {
       const recipientUserId = String(body.recipientUserId || "");
       if (!amount || amount <= 0 || !recipientUserId) {
         return new Response(JSON.stringify({ error: "Dati non validi" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (recipientUserId === user.id) {
         return new Response(JSON.stringify({ error: "Non puoi trasferire a te stesso" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -239,7 +239,7 @@ serve(async (req) => {
       if (debitError) {
         const insufficient = debitError.message?.toLowerCase().includes("insufficient");
         return new Response(JSON.stringify({ error: insufficient ? "Saldo insufficiente" : "Trasferimento fallito" }), {
-          status: insufficient ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -251,7 +251,7 @@ serve(async (req) => {
         await admin.rpc("credit_qr_coins", { _user_id: user.id, _amount: amount });
         console.error("transfer credit failed, refunded sender:", creditError);
         return new Response(JSON.stringify({ error: "Trasferimento fallito, saldo ripristinato" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
@@ -290,7 +290,7 @@ serve(async (req) => {
       const amount = Math.min(Number(body.amount) || 0, MAX_AMOUNT);
       if (amount <= 0) {
         return new Response(JSON.stringify({ error: "Importo non valido" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const { data: newBalance, error } = await admin.rpc("credit_qr_coins", {
@@ -308,12 +308,12 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ error: "kind mancante" }), {
-      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("qr-coins-transaction error:", e);
     return new Response(JSON.stringify({ error: "Errore interno" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

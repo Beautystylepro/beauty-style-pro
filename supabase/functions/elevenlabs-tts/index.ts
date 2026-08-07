@@ -17,7 +17,7 @@ serve(async (req) => {
 
     if (!text || text.trim().length === 0) {
       return new Response(JSON.stringify({ error: "Text is required" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -54,7 +54,7 @@ serve(async (req) => {
       const errorText = await response.text();
       console.error("ElevenLabs TTS error:", response.status, errorText);
       return new Response(JSON.stringify({ error: "TTS generation failed" }), {
-        status: response.status,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -70,7 +70,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("TTS error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

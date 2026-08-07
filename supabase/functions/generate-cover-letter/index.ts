@@ -18,12 +18,12 @@ serve(async (req) => {
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "AI non disponibile" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!jobTitle) {
       return new Response(JSON.stringify({ error: "Dati annuncio mancanti" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -43,7 +43,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       return new Response(JSON.stringify({ error: "Errore nella generazione" }), {
-        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const result = await response.json();
@@ -54,6 +54,6 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("generate-cover-letter error", e);
-    return new Response(JSON.stringify({ error: "Errore interno" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Errore interno" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

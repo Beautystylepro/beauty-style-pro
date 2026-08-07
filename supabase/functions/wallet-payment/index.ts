@@ -25,14 +25,14 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const authed = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userError } = await authed.auth.getUser();
     if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const user = userData.user;
@@ -41,7 +41,7 @@ serve(async (req) => {
     const amt = Number(amount);
     if (!amt || amt <= 0) {
       return new Response(JSON.stringify({ error: "Importo non valido" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -55,7 +55,7 @@ serve(async (req) => {
     if (debitError) {
       const insufficient = debitError.message?.toLowerCase().includes("insufficient");
       return new Response(JSON.stringify({ error: insufficient ? "Saldo insufficiente" : "Pagamento fallito" }), {
-        status: insufficient ? 400 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -127,7 +127,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("wallet-payment error:", e);
     return new Response(JSON.stringify({ error: "Errore interno" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
