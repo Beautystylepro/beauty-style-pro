@@ -393,36 +393,43 @@ export function useWebRTCCall() {
       const stream = await getMedia(kind);
       setLocalStream(stream);
 
-      const pc = createPeer(toUser, callId, kind);
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // Un'app pubblicata non deve mostrare un errore tecnico al primo
+      // intoppo — deve ricominciare da sola con una connessione nuova
+      // e pulita prima di arrendersi. Riprovare la STESSA operazione
+      // sulla stessa connessione già compromessa non serve mai (una
+      // RTCPeerConnection chiusa non torna mai utilizzabile) — qui si
+      // ricrea tutto da zero al secondo tentativo.
+      let lastError: Error | null = null;
+      let sent = false;
+      for (let attempt = 0; attempt < 2 && !sent; attempt++) {
+        if (attempt > 0) {
+          console.error("[CALL] Primo tentativo fallito, ricomincio da zero con una connessione nuova:", lastError?.message);
+          cleanupPeer();
+          await new Promise((r) => setTimeout(r, 400));
+        }
 
-      await sendSignal("ringing", toUser, {
-        name: profile?.display_name || user.email || "Utente",
-        avatar: profile?.avatar_url || null,
-      }, kind, callId);
+        const pc = createPeer(toUser, callId, kind);
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      // BUG TROVATO nei dati reali: 10 tentativi di chiamata, zero
-      // offerte video mai inviate — qualcosa fallisce sempre proprio
-      // qui, tra "squillo" e "offerta". Registrazione dettagliata
-      // passo-passo per vedere l'errore esatto al prossimo tentativo.
-      let offer: RTCSessionDescriptionInit;
-      try {
-        offer = await pc.createOffer();
-      } catch (offerError: any) {
-        console.error("[CALL] createOffer failed", { message: offerError?.message, name: offerError?.name, pcState: pc.signalingState });
-        throw new Error("Errore nella creazione dell'offerta video: " + (offerError?.message || "sconosciuto"));
+        try {
+          if (attempt === 0) {
+            await sendSignal("ringing", toUser, {
+              name: profile?.display_name || user.email || "Utente",
+              avatar: profile?.avatar_url || null,
+            }, kind, callId);
+          }
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await sendSignal("offer", toUser, { sdp: offer.sdp, type: offer.type }, kind, callId);
+          sent = true;
+        } catch (stepError: any) {
+          lastError = stepError instanceof Error ? stepError : new Error(String(stepError));
+          console.error("[CALL] Tentativo " + (attempt + 1) + " fallito", { message: lastError.message, pcState: pc.signalingState });
+        }
       }
-      try {
-        await pc.setLocalDescription(offer);
-      } catch (sdpError: any) {
-        console.error("[CALL] setLocalDescription failed", { message: sdpError?.message, name: sdpError?.name, pcState: pc.signalingState });
-        throw new Error("Errore nell'impostazione dell'offerta: " + (sdpError?.message || "sconosciuto"));
-      }
-      try {
-        await sendSignal("offer", toUser, { sdp: offer.sdp, type: offer.type }, kind, callId);
-      } catch (signalError: any) {
-        console.error("[CALL] sendSignal(offer) failed", { message: signalError?.message, code: signalError?.code });
-        throw new Error("Errore nell'invio dell'offerta: " + (signalError?.message || "sconosciuto"));
+
+      if (!sent) {
+        throw lastError || new Error("Impossibile avviare la chiamata dopo due tentativi");
       }
     } catch (error: any) {
       console.error("[CALL] startCall failed", { message: error?.message, name: error?.name });

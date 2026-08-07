@@ -261,12 +261,24 @@ export default function CallManager() {
       const spokenText: string = (sttData?.transcript || "").trim();
       if (spokenText.length < 2) return; // silence / noise, nothing was said
 
-      const { data, error } = await supabase.functions.invoke("elevenlabs-translate-speak", {
-        body: { spokenText, targetLanguage: callTargetLang },
-      });
+      // Un'app pubblicata non deve mostrare errori tecnici — deve
+      // riprovare da sola prima di arrendersi. Un solo tentativo
+      // fallito (rete instabile per un istante, servizio momentaneamente
+      // lento) non deve mai diventare un messaggio visibile: si
+      // riprova automaticamente una volta, in silenzio, e solo se
+      // fallisce ANCHE il secondo tentativo si informa l'utente.
+      let data: any, error: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await supabase.functions.invoke("elevenlabs-translate-speak", {
+          body: { spokenText, targetLanguage: callTargetLang },
+        });
+        data = result.data; error = result.error;
+        if (!error && !data?.error) break;
+        if (attempt === 0) await new Promise(r => setTimeout(r, 700));
+      }
       if (error) throw error;
       if (data?.error) {
-        console.error("[Traduzione] errore reale:", data.error);
+        console.error("[Traduzione] errore reale dopo 2 tentativi:", data.error);
         // Un solo avviso ogni 10 secondi, per non spammare durante il
         // flusso continuo di traduzione — prima l'errore spariva nel
         // nulla senza che l'utente potesse mai saperlo.

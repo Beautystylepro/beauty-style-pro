@@ -198,14 +198,24 @@ const AILookGeneratorPage = () => {
     }, 500);
 
     try {
-      const { data, error } = await supabase.functions.invoke("ai-look-generator", {
-        body: {
-          action: "generate",
-          imageUrl: photoUrl,
-          styles: styles || selectedStyles,
-          autoMode: !!styles,
-        },
-      });
+      // Un tentativo fallito non deve mai diventare un errore visibile
+      // subito — si riprova automaticamente una volta prima di
+      // arrendersi, dato che spesso basta un istante di sovraccarico
+      // momentaneo del servizio AI.
+      let data: any, error: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await supabase.functions.invoke("ai-look-generator", {
+          body: {
+            action: "generate",
+            imageUrl: photoUrl,
+            styles: styles || selectedStyles,
+            autoMode: !!styles,
+          },
+        });
+        data = result.data; error = result.error;
+        if (!error && !data?.error) break;
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+      }
 
       clearInterval(interval);
 
