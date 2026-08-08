@@ -1,4 +1,4 @@
-import { Users, Calendar, CreditCard, ShieldCheck, BarChart3, Clock, Crown, Rocket, DollarSign, Flag, FileCheck, ArrowLeft, Ban, CheckCircle, XCircle, TrendingUp, Wallet, AlertTriangle, Eye } from "lucide-react";
+import { Users, Calendar, CreditCard, ShieldCheck, BarChart3, Clock, Crown, Rocket, DollarSign, Flag, FileCheck, ArrowLeft, Ban, CheckCircle, XCircle, TrendingUp, Wallet, AlertTriangle, Eye, LifeBuoy, MessageCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,7 +10,7 @@ export default function AdminPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<"overview" | "users" | "payments" | "reports" | "verify" | "team">("overview");
+  const [tab, setTab] = useState<"overview" | "users" | "payments" | "reports" | "verify" | "team" | "support">("overview");
   const [stats, setStats] = useState({ users: 0, bookings: 0, professionals: 0, businesses: 0, posts: 0, products: 0, subscriptions: 0, boosts: 0, transactions: 0, totalQRC: 0 });
   const [recentUsers, setRecentUsers] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -72,6 +72,33 @@ export default function AdminPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (isAdmin && tab === "team") loadStaff(); }, [tab, isAdmin]);
+  useEffect(() => { if (isAdmin && tab === "support") loadTickets(); }, [tab, isAdmin]);
+
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+
+  const loadTickets = async () => {
+    const { data } = await supabase
+      .from("support_tickets")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!data) { setTickets([]); return; }
+    const userIds = [...new Set(data.map(t => t.user_id))];
+    const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", userIds);
+    const nameMap = new Map((profs || []).map(p => [p.user_id, p.display_name]));
+    setTickets(data.map(t => ({ ...t, authorName: nameMap.get(t.user_id) || "Utente" })));
+  };
+
+  const sendReply = async (ticketId: string) => {
+    const reply = replyDrafts[ticketId]?.trim();
+    if (!reply) { toast.error("Scrivi una risposta"); return; }
+    const { error } = await supabase.from("support_tickets")
+      .update({ admin_reply: reply, status: "resolved", resolved_at: new Date().toISOString() })
+      .eq("id", ticketId);
+    if (error) { toast.error("Errore nell'invio"); return; }
+    toast.success("Risposta inviata");
+    loadTickets();
+  };
 
   if (isAdmin === null) {
     return (
@@ -266,6 +293,7 @@ export default function AdminPage() {
     { key: "reports" as const, label: "Report", Icon: Flag },
     { key: "verify" as const, label: `Verifiche${pendingVerifications > 0 ? ` (${pendingVerifications})` : ''}`, Icon: FileCheck },
     { key: "team" as const, label: "Team", Icon: ShieldCheck },
+    { key: "support" as const, label: "Assistenza", Icon: LifeBuoy },
   ];
 
   return (
@@ -645,6 +673,44 @@ export default function AdminPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {tab === "support" && (
+          <div className="space-y-3">
+            {tickets.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nessuna richiesta di assistenza.</p>
+            )}
+            {tickets.map((t: any) => (
+              <div key={t.id} className="rounded-2xl bg-card border border-border/50 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">{t.subject}</h4>
+                  <span className={`text-xs px-2 py-1 rounded-full ${t.status === "resolved" ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
+                    {t.status === "resolved" ? "Risolto" : "In attesa"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{t.authorName} · {t.category}</p>
+                <p className="text-sm">{t.message}</p>
+                {t.admin_reply ? (
+                  <div className="p-3 rounded-xl bg-primary/5 border border-primary/20">
+                    <p className="text-xs font-semibold text-primary mb-1">Tua risposta:</p>
+                    <p className="text-sm">{t.admin_reply}</p>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      value={replyDrafts[t.id] || ""}
+                      onChange={(e) => setReplyDrafts(prev => ({ ...prev, [t.id]: e.target.value }))}
+                      placeholder="Scrivi una risposta..."
+                      className="flex-1 h-10 px-3 rounded-xl border border-border/50 bg-background text-sm"
+                    />
+                    <button onClick={() => sendReply(t.id)} className="px-4 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-semibold flex items-center gap-1">
+                      <MessageCircle className="w-4 h-4" /> Rispondi
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

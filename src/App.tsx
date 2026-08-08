@@ -88,6 +88,7 @@ const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
 const ReceiptsPage = lazy(() => import("./pages/ReceiptsPage"));
 const TermsPage = lazy(() => import("./pages/TermsPage"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
+const SupportPage = lazy(() => import("./pages/SupportPage"));
 const VerifyAccountPage = lazy(() => import("./pages/VerifyAccountPage"));
 const RemindersPage = lazy(() => import("./pages/RemindersPage"));
 const SpaTermePage = lazy(() => import("./pages/SpaTermePage"));
@@ -191,6 +192,7 @@ const App = () => {
             <Route path="/spa-terme" element={<SpaTermePage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/support" element={<P><SupportPage /></P>} />
 
             {/* Protected routes */}
             <Route path="/profile" element={<P><ProfilePage /></P>} />

@@ -14,6 +14,19 @@ export default function SettingsPage() {
   const { theme, setTheme, toggleTheme } = useTheme();
   const { colorTheme, setColorTheme } = useColorTheme();
   const [pushNotif, setPushNotif] = useState(true);
+
+  // BUG TROVATO: "Cambia Password" esisteva visivamente ma senza
+  // alcuna azione collegata — non faceva letteralmente nulla al
+  // tocco. Riusa lo stesso meccanismo reale già funzionante per il
+  // recupero password.
+  const handleChangePassword = async () => {
+    if (!user?.email) { toast.error("Email non disponibile"); return; }
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) toast.error(error.message);
+    else toast.success("Ti abbiamo inviato un'email per reimpostare la password");
+  };
   const [homeService, setHomeService] = useState(false);
 
   useEffect(() => {
@@ -139,7 +152,7 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-3 px-1">Account</p>
           <div className="space-y-1.5">
             <SettingRow icon={User} label="Modifica Profilo" onClick={() => navigate("/profile/edit")} />
-            <SettingRow icon={Lock} label="Cambia Password" />
+            <SettingRow icon={Lock} label="Cambia Password" onClick={handleChangePassword} />
           </div>
         </section>
 
@@ -350,7 +363,7 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-3 px-1">Supporto</p>
           <div className="space-y-1.5">
             <SettingRow icon={Shield} label="Verifica Account" onClick={() => navigate("/verify-account")} />
-            <SettingRow icon={HelpCircle} label="Centro Assistenza" />
+            <SettingRow icon={HelpCircle} label="Centro Assistenza" onClick={() => navigate("/support")} />
             <SettingRow icon={FileText} label="Termini e Condizioni" onClick={() => navigate("/terms")} />
             <SettingRow icon={Shield} label="Privacy Policy" onClick={() => navigate("/privacy")} />
           </div>

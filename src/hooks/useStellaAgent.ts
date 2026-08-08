@@ -1843,10 +1843,18 @@ export function useStellaAgent() {
       addMessage({ role: 'stella', content: displayResponse, type: intent && intent !== 'chat' ? 'action_result' : 'text' });
       stellaSpeak(displayResponse.length > 200 ? displayResponse.substring(0, 200) + '...' : displayResponse);
 
+      // BUG TROVATO: per consigli/dialoghi/valutazioni (intent "chat")
+      // il pannello si apriva SEMPRE, anche quando l'utente aveva
+      // interagito solo a voce senza mai toccare lo schermo — al
+      // contrario dei comandi azione, che restavano correttamente
+      // "in stile Siri" (solo icona fluttuante + testo inline). Ora
+      // entrambi i casi si comportano allo stesso modo: nessuna
+      // apertura automatica del pannello, solo l'icona fluttuante con
+      // il testo e la voce.
+      setInlineStatus(displayResponse.substring(0, 100));
+      completeStep(thinkId, 'done', intent && intent !== 'chat' ? `Intento: ${intent}` : 'Risposta vocale');
+
       if (intent && intent !== 'chat') {
-        // Siri-like: show inline status, don't open panel
-        setInlineStatus(displayResponse.substring(0, 100));
-        completeStep(thinkId, 'done', `Intento: ${intent}`);
         const doId = pushStep('⚡', displayResponse.substring(0, 60), 'pending');
         await executeAIIntent(intent, params || {}, displayResponse);
         completeStep(doId, 'done');
@@ -1854,10 +1862,6 @@ export function useStellaAgent() {
         scheduleStepsClear();
         logStellaCommand(text, intent);
       } else {
-        // Chat response: show in panel
-        setIsOpen(true);
-        setInlineStatus(null);
-        completeStep(thinkId, 'done', 'Risposta in chat');
         scheduleStepsClear();
       }
     } catch (err: any) {
